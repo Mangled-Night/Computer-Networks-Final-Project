@@ -1,29 +1,43 @@
 import socket
+import threading
 
 def server_program():
-    # get the hostname
     host = socket.gethostname()
-    port = 5000  # initiate port no above 1024
+    port = 5000  # Port to bind the server
 
-    server_socket = socket.socket()  # get instance
-    # look closely. The bind() function takes tuple as argument
-    server_socket.bind((host, port))  # bind host address and port together
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((host, port))
+    server_socket.listen(4)
+    print("Server is listening on port", port)
 
-    # configure how many client the server can listen simultaneously
-    server_socket.listen(2)
-    conn, address = server_socket.accept()  # accept new connection
+    input_thread = threading.Thread(target=Console)
+    input_thread.start()
+
+    while True:
+        # Accept new connection
+        conn, address = server_socket.accept()
+        # Start a new thread to handle each client
+        client_thread = threading.Thread(target=handle_client, args=(conn, address))
+        client_thread.start()
+
+
+def handle_client(conn, address):
     print("Connection from: " + str(address))
     while True:
-        # receive data stream. it won't accept data packet greater than 1024 bytes
         data = conn.recv(1024).decode()
         if not data:
-            # if data is not received break
+            # If data is not received, close the connection
             break
-        print("from connected user: " + str(data))
-        data = ' -> ' + commands(data)
-        conn.send(data.encode())  # send data to the client
+        print("from connected user:", data)
+        response = ' -> ' + commands(data)
+        conn.send(response.encode())  # Send data to the client
+    conn.close()
 
-    conn.close()  # close the connection
+def Console():
+    command = input("server/ ")
+    while command.lower().strip() != 'shutdown':
+        print("-> " + command)
+        command = input("server/ ")
 
 
 def commands(request):
