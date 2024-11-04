@@ -1,4 +1,19 @@
 import socket
+import threading
+
+def client_commands(conn, address): # used to connect to a single client
+        print("Connection from: ", str(address)) # tells who is connecting (Ip address)
+        while True:
+            data = conn.recv(1024).decode() # limits amound of data by 1kb
+            if not data: # if no data then break
+                break
+            print("Response from:", str(data))
+            data = ' : ' + commands(data)
+            conn.send(data.encode()) # send data
+
+        conn.close()
+        print("Connection closed")
+
 
 def server_program():
     # get the hostname
@@ -11,20 +26,27 @@ def server_program():
 
     # configure how many client the server can listen simultaneously
     server_socket.listen(2)
-    conn, address = server_socket.accept()  # accept new connection
-    print("Connection from: " + str(address))
+    print(f"Server started on {host}:{port}") # added to let us know the server has started up
+
     while True:
+        conn, address = server_socket.accept()
+        # used to create a thread for every new client
+        client_thread = threading.Thread(target=client_commands, args=(conn, address))
+        client_thread.start()
+
+    #conn, address = server_socket.accept()  # accept new connection
+    #print("Connection from: " + str(address))
+    #while True:
         # receive data stream. it won't accept data packet greater than 1024 bytes
-        data = conn.recv(1024).decode()
-        if not data:
+        #data = conn.recv(1024).decode()
+        #if not data:
             # if data is not received break
-            break
-        print("from connected user: " + str(data))
-        data = ' -> ' + commands(data)
-        conn.send(data.encode())  # send data to the client
+            #break
+        #print("from connected user: " + str(data))
+        #data = ' -> ' + commands(data)
+        #conn.send(data.encode())  # send data to the client
 
-    conn.close()  # close the connection
-
+    #conn.close()  # close the connection
 
 def commands(request):
     match request:
