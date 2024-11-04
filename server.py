@@ -23,6 +23,10 @@ def server_program():
 
 def handle_client(conn, address):
     print("Connection from: " + str(address))
+    if( not Authenticate(conn) ): # Failed Authentication Denies Access To Server Commands
+        conn.close()
+        return
+
     while True:
         data = conn.recv(1024).decode()
         if not data:
@@ -38,6 +42,30 @@ def Console():
     while command.lower().strip() != 'shutdown':
         print("-> " + command)
         command = input("server/ ")
+
+def Authenticate(conn):
+    Passcode = "Alphabet"
+    TryCounter = 0
+
+    Reuqest = "Please Authenticate before accessing Server"
+    conn.send(Reuqest.encode())
+
+    while True:
+        data = conn.recv(1024).decode()
+        if(data == Passcode):
+            Verified = "Authentication Verified"
+            conn.send(Verified.encode())
+            return True
+        else:
+            Denied = "Authentication Failed. Please Try Again"
+            TryCounter += 1
+            if(TryCounter == 4):
+                Deny = "Failed to Authenticate, Access to Server Rejected. Connection is Closed"
+                conn.send(Deny.encode())
+                return False
+
+            conn.send(Denied.encode())
+
 
 
 def commands(request):
