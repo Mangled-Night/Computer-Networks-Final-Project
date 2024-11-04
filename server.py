@@ -1,5 +1,11 @@
 import socket
 import threading
+import os
+
+
+
+Authentication_Server = {}
+
 
 def server_program():
     host = socket.gethostname()
@@ -38,35 +44,91 @@ def handle_client(conn, address):
     conn.close()
 
 def Console():
-    command = input("server/ ")
+    command = ""
     while command.lower().strip() != 'shutdown':
-        print("-> " + command)
         command = input("server/ ")
 
 def Authenticate(conn):
-    Passcode = "Alphabet"
     TryCounter = 0
-
-    Reuqest = "Please Authenticate before accessing Server"
-    conn.send(Reuqest.encode())
+    Greeting = "Welcome to the Computer Networks Server! If you are a new user, press 0. If you already have a username, press 1"
+    conn.send(Greeting.encode())
 
     while True:
         data = conn.recv(1024).decode()
-        if(data == Passcode):
-            Verified = "Authentication Verified"
-            conn.send(Verified.encode())
-            return True
+        if(data == '0'):
+            NewUserSetup(conn)
+            Login = "Please Try to Log in With your New Account. Enter your username"
+            conn.send(Login.encode())
+        elif(data == '1'):
+            Verification = "Please enter your username"
+            conn.send(Verification.encode())
         else:
-            Denied = "Authentication Failed. Please Try Again"
-            TryCounter += 1
-            if(TryCounter == 4):
-                Deny = "Failed to Authenticate, Access to Server Rejected. Connection is Closed"
-                conn.send(Deny.encode())
-                return False
+            TryAgain = "Please input either 0 for new user or 1 for current user"
+            conn.send(TryAgain.encode())
+            continue
+        while True:
+            data = conn.recv(1024)
+            if(FetchUser(data)):
+                user = data
+                TryCounter = 0
+                Verified = "User Found, please enter your password"
+                conn.send(Verified.encode())
+                data = conn.recv(1024)
+                while True:
+                    if(FetchPass(user, data)):
+                        Verified = "Authentication Complete. Welcome "
+                        conn.send(Verified.encode() + user)
+                        return True
+                    else:
+                        Denied = "Incorrect Password. Please Try Again"
+                        TryCounter += 1
+                        if (TryCounter == 4):
+                            Deny = "Failed to Authenticate, Access to Server Rejected. Connection is Closed"
+                            conn.send(Deny.encode())
+                            return False
+                        conn.send(Denied.encode())
+            else:
+                Denied = "Username Not Found. Please Try Again"
+                TryCounter += 1
+                if (TryCounter == 4):
+                    Deny = "Failed to Authenticate, Access to Server Rejected. Connection is Closed"
+                    conn.send(Deny.encode())
+                    return False
+                conn.send(Denied.encode())
 
-            conn.send(Denied.encode())
 
+def NewUserSetup(conn):
+    while True:
+        enter_username = "Please Enter a Username"
+        conn.send(enter_username.encode())
+        user = conn.recv(1024)
+        confirm = "Is this the Username that you want? y? Enter anything for no"
+        conn.send(confirm.encode())
+        data = conn.recv(1024).decode().lower()
 
+        if(data == 'y'):
+            while True:
+                enter_password = "Please Enter a Password"
+                conn.send(enter_password.encode())
+                passcode = conn.recv(1024)
+                confirm = "Is this the password that you want? y? Enter anything for no"
+                conn.send(confirm.encode())
+                data = conn.recv(1024).decode().lower()
+                if(data == 'y'):
+                    Authentication_Server[user] = passcode
+                    return
+def FetchUser(username):
+    for users in Authentication_Server.keys():
+        if(users.decode() == username.decode()):
+            return True
+
+    return False
+
+def FetchPass(username, passcode):
+    return Authentication_Server[username].decode() == passcode.decode()
+
+def Failed():
+   return
 
 def commands(request):
     match request:
