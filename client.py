@@ -1,15 +1,54 @@
 import socket
+import tkinter as tk
+
+class GUI:
+    def __init__(self):
+        self.root = tk.Tk()
+
+        self.root.geometry("500x500")
+        self.root.title("CNT_Project")
+
+        self.label = tk.Label(self.root, text="Your mother", font=('Arial', 18))
+        self.label.pack(padx = 20, pady=20)
+
+        self.buttonframe = tk.Frame(self.root)
+        self.buttonframe.columnconfigure(0, weight=1)
+        self.buttonframe.columnconfigure(1, weight=1)
+        self.buttonframe.columnconfigure(2, weight=1)
+
+        self.btn1 = tk.Button(self.buttonframe, text="Connect", font=('Arial', 18), command=client_program)
+        self.btn1.grid(row=0, column=0, sticky=tk.W+tk.E)
+
+        self.btn2 = tk.Button(self.buttonframe, text="Upload", font=('Arial', 18))
+        self.btn2.grid(row=0, column=1, sticky=tk.W+tk.E)
+
+        self.btn3 = tk.Button(self.buttonframe, text="Download", font=('Arial', 18))
+        self.btn3.grid(row=0, column=2, sticky=tk.W+tk.E)
+
+        self.btn4 = tk.Button(self.buttonframe, text="Delete", font=('Arial', 18))
+        self.btn4.grid(row=1, column=0, sticky=tk.W+tk.E)
+
+        self.btn5 = tk.Button(self.buttonframe, text="Dir", font=('Arial', 18))
+        self.btn5.grid(row=1, column=1, sticky=tk.W+tk.E)
+
+        self.btn6 = tk.Button(self.buttonframe, text="Subfolder", font=('Arial', 18))
+        self.btn6.grid(row=1, column=2, sticky=tk.W+tk.E)
+
+        self.buttonframe.pack(fill='x')
+
+        self.root.mainloop()
 
 def connect_server(host, port):
     print("Establishing a connection to the server...")
     client_socket = socket.socket()
     try:
-            client_socket.connect((host, port))
-            print(f"Connection established: {host} : {port}")
-            return client_socket
+        client_socket.connect((host, port))
+        print(f"Connection established: {host} : {port}")
+        return client_socket
     except ConnectionError:
         print("Unable to establish a connection to the server.")
         return None
+
 
 def receive_response(client_socket):
     # receive response from server
@@ -19,6 +58,10 @@ def receive_response(client_socket):
     except ConnectionError:
         print("Unable to receive data.")
         return None
+
+def on_select(event):
+    selected_item = combo_box.get()
+    label.config(text="Selected Item: " + selected_item)
 
 def send_message(client_socket, message):
     try:
