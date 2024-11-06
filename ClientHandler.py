@@ -122,11 +122,11 @@ class ClientHandle:
                         return
 
     def __FetchUser(self, username):
-        for users in self._Server.keys():
-            if (users.decode() == username.decode()):
-                return True
+        if(self._Server.get(username) == None):
+            return False
+        else:
+            return True
 
-        return False
 
     def __FetchPass(self, passcode):
         return self._Server[self._user].decode() == passcode.decode()
