@@ -20,7 +20,6 @@ def client_program():
             print("Connection has been terminated")
             return
 
-        print(data)
         if(data == ""):
             client_socket.close()
             print("Connection has been terminated")
