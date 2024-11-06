@@ -1,4 +1,5 @@
 import socket
+import hashlib
 
 
 def client_program():
@@ -13,13 +14,12 @@ def client_program():
 
     while message.lower().strip() != 'bye':
         try:
-            client_socket.send(message.encode())  # send message
+            client_socket.send(message.encode()) # send message
+            data = client_socket.recv(1024).decode()  # receive response
         except:
             client_socket.close()
             print("Connection has been terminated")
             return
-
-        data = client_socket.recv(1024).decode()  # receive response
 
         if(data == ""):
             client_socket.close()

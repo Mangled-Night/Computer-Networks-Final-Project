@@ -1,6 +1,5 @@
 import threading
 import os
-import time
 
 class ClientHandle:
     Server = dict([])
@@ -8,27 +7,26 @@ class ClientHandle:
     states = ['Listening', 'Sending']
 
     def __init__(self, connection, address):
-        self.conn = connection
-        self.addr = address
-        self.state = 'Listening'
-        self.user = ''
-        self.TryCounter = 0
+        self._conn = connection
+        self._addr = address
+        self._user = ''
+        self._TryCounter = 0
 
     def handle_client(self):
-        print("Connection from: " + str(self.addr))
+        print("Connection from: " + str(self._addr))
         try:
             if( not self.Authenticate() ): # Failed Authentication Denies Access To Server Commands
-                self.conn.close()
+                self._conn.close()
                 return
 
             while True:
-                data = self.conn.recv(1024).decode()
+                data = self._conn.recv(1024).decode()
                 if (not data):
                     # If data is not received, close the connection
                     break
                 print("from connected user:", data)
                 self.SendMessage(' -> ' + self.commands(data))
-            self.conn.close()
+            self._conn.close()
         except:
             print("Connection Terminated By Host")
             del self
@@ -70,7 +68,7 @@ class ClientHandle:
                     "If you already have a username, press 1")
 
         while True:
-            data = self.conn.recv(1024).decode()
+            data = self._conn.recv(1024).decode()
             if (data == '0'):
                 self.NewUserSetup()
                 self.SendMessage("Please Try to Log in With your New Account. Enter your username")
@@ -83,39 +81,37 @@ class ClientHandle:
                 continue
 
             while True:
-                data = self.conn.recv(1024)
+                data = self._conn.recv(1024)
                 if (self.FetchUser(data)):
-                    self.user = data
-                    self.TryCounter = 0
+                    self._user = data
+                    self._TryCounter = 0
                     self.SendMessage("User Found, please enter your password")
-                    data = self.conn.recv(1024)
+                    data = self._conn.recv(1024)
                     while True:
                         if (self.FetchPass(data)):
-                            self.SendMessage("Authentication Complete. Welcome " + self.user.decode())
+                            self.SendMessage("Authentication Complete. Welcome " + self._user.decode())
                             return True
                         else:
-                            self.TryCounter += 1
-                            if (self.TryCounter == 4):
-                                self.SendMessage("Failed to Authenticate, Access to Server Rejected. Connection is Closed", 1)
+                            if(self.Failed("Incorrect Password. Please Try Again")):
                                 return False
-                            self.Failed("Incorrect Password. Please Try Again")
 
                 else:
-                    self.Failed("Username Not Found. Please Try Again")
+                    if(self.Failed("Username Not Found. Please Try Again")):
+                        return False
 
     def NewUserSetup(self):
         while True:
             self.SendMessage("Please Enter a Username", 0)
-            user = self.conn.recv(1024)
+            user = self._conn.recv(1024)
             self.SendMessage("Is this the Username that you want? y? Enter anything for no", 0)
-            data = self.conn.recv(1024).decode().lower()
+            data = self._conn.recv(1024).decode().lower()
 
             if (data == 'y'):
                 while True:
                     self.SendMessage("Please Enter a Password", 0)
-                    passcode = self.conn.recv(1024)
+                    passcode = self._conn.recv(1024)
                     self.SendMessage("Is this the password that you want? y? Enter anything for no", 0)
-                    data = self.conn.recv(1024).decode().lower()
+                    data = self._conn.recv(1024).decode().lower()
 
                     if (data == 'y'):
                         self.Server[user] = passcode
@@ -129,13 +125,14 @@ class ClientHandle:
         return False
 
     def FetchPass(self, passcode):
-        return self.Server[self.user].decode() == passcode.decode()
+        return self.Server[self._user].decode() == passcode.decode()
 
     def Failed(self, message):
-        self.TryCounter += 1
-        if (self.TryCounter == 4):
+        self._TryCounter += 1
+        if (self._TryCounter == 4):
             self.SendMessage("Failed to Authenticate, Access to Server Rejected. Connection is Closed", 1)
-            return False
+            return True
         self.SendMessage(message)
+        return False
     def SendMessage(self, message, state=0):
-        self.conn.send(message.encode() + f'~{self.states[state]}'.encode())
+        self._conn.send(message.encode() + f'~{self.states[state]}'.encode())
