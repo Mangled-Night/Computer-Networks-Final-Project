@@ -22,7 +22,7 @@ class ClientHandle:
                 return
 
             while True:
-                data = self._conn.recv(1024).decode()
+                data = self.__ReciveMessage()
                 if (not data):
                     # If data is not received, close the connection
                     break
@@ -61,7 +61,11 @@ class ClientHandle:
                 return "Clients can create or subfolders in the server’s file storage path"
 
             case "RSA":
-                self.__ContactRSA()
+                try:
+                    self.__ContactRSA()
+                except:
+                    self.__SendMessage("RSA Server Connection is Terminated", 1)
+
                 return "Hello"
 
             case _:
@@ -72,7 +76,7 @@ class ClientHandle:
                     "If you already have a username, press 1")
 
         while True:
-            data = self._conn.recv(1024).decode()
+            data = self.__ReciveMessage()
             if (data == '0'):
                 self.__NewUserSetup()
                 self.__SendMessage("Please Try to Log in With your New Account. Enter your username")
@@ -85,13 +89,13 @@ class ClientHandle:
                 continue
 
             while True:
-                data = self._conn.recv(1024)
+                data = self.__ReciveMessage(False)
                 if (self.__FetchUser(data)):
                     self._user = data
                     self._TryCounter = 0
                     self.__SendMessage("User Found, please enter your password")
-                    data = self._conn.recv(1024)
                     while True:
+                        data = self.__ReciveMessage(False)
                         if (self.__FetchPass(data)):
                             self.__SendMessage("Authentication Complete. Welcome " + self._user.decode())
                             return True
@@ -106,16 +110,16 @@ class ClientHandle:
     def __NewUserSetup(self):
         while True:
             self.__SendMessage("Please Enter a Username", 0)
-            user = self._conn.recv(1024)
+            user = self.__ReciveMessage(False)
             self.__SendMessage("Is this the Username that you want? y? Enter anything for no", 0)
-            data = self._conn.recv(1024).decode().lower()
+            data = self.__ReciveMessage().lower()
 
             if (data == 'y'):
                 while True:
                     self.__SendMessage("Please Enter a Password", 0)
-                    passcode = self._conn.recv(1024)
+                    passcode = self.__ReciveMessage(False)
                     self.__SendMessage("Is this the password that you want? y? Enter anything for no", 0)
-                    data = self._conn.recv(1024).decode().lower()
+                    data = self.__ReciveMessage().lower()
 
                     if (data == 'y'):
                         self._Server[user] = passcode
@@ -140,6 +144,11 @@ class ClientHandle:
         return False
     def __SendMessage(self, message, state=0):
         self._conn.send(message.encode() + f'~{self._states[state]}'.encode())
+
+    def __ReciveMessage(self, decode=True):
+        data = self._conn.recv(1024)
+        data = data.decode() if decode else data
+        return data
 
     def __Close(self):
         self._conn.close()

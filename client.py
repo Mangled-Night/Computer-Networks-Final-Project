@@ -7,7 +7,7 @@ def client_program():
 
     client_socket = socket.socket()  # instantiate
     client_socket.connect((host, port))  # connect to the server
-    states = ['Listening', 'Sending']
+    states = ['Listening', 'Sending', "ACK"]
 
     message = "" # take input
 
@@ -20,6 +20,7 @@ def client_program():
             print("Connection has been terminated")
             return
 
+        print(data)
         if(data == ""):
             client_socket.close()
             print("Connection has been terminated")
