@@ -7,16 +7,30 @@ def client_program():
 
     client_socket = socket.socket()  # instantiate
     client_socket.connect((host, port))  # connect to the server
+    states = ['Listening', 'Sending']
 
-    message = input(" -> ")  # take input
+    message = "" # take input
 
     while message.lower().strip() != 'bye':
-        client_socket.send(message.encode())  # send message
-        data = client_socket.recv(1024).decode()  # receive response
+        try:
+            client_socket.send(message.encode()) # send message
+            data = client_socket.recv(1024).decode()  # receive response
+        except:
+            client_socket.close()
+            print("Connection has been terminated")
+            return
 
-        print('Received from server: ' + data)  # show in terminal
+        if(data == ""):
+            client_socket.close()
+            print("Connection has been terminated")
+            return
 
-        message = input(" -> ")  # again take input
+        clientData, serverState = data.split('~')
+        print('Received from server: ' + clientData)  # show in terminal
+
+        if(serverState == states[0]):
+            message = input(" -> ")  # again take input
+
 
     client_socket.close()  # close the connection
 

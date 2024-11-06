@@ -1,10 +1,12 @@
 import threading
 import os
 
+
 class ClientHandle:
-    Server = dict([])
-    Lock = threading.Lock()
-    states = ['Listening', 'Sending']
+    _Server = dict([])
+    _Lock = threading.Lock()
+    _states = ['Listening', 'Sending']
+    _RSAserver = None
 
     def __init__(self, connection, address):
         self._conn = connection
@@ -15,8 +17,8 @@ class ClientHandle:
     def handle_client(self):
         print("Connection from: " + str(self._addr))
         try:
-            if( not self.Authenticate() ): # Failed Authentication Denies Access To Server Commands
-                self._conn.close()
+            if( not self.__Authenticate() ): # Failed Authentication Denies Access To Server Commands
+                self.__Close()
                 return
 
             while True:
@@ -25,13 +27,13 @@ class ClientHandle:
                     # If data is not received, close the connection
                     break
                 print("from connected user:", data)
-                self.SendMessage(' -> ' + self.commands(data))
-            self._conn.close()
+                self.__SendMessage(' -> ' + self.__commands(data))
+            self.__Close()
         except:
             print("Connection Terminated By Host")
-            del self
+            self.__Close()
 
-    def commands(self, request):
+    def __commands(self, request):
         match request:
             case "Connect":
                 return "Initiates connection from client to server with the specified files"
@@ -49,9 +51,7 @@ class ClientHandle:
                 Directory = ""
                 for file in os.listdir():
                     Directory += '\n' + str(file)
-                self.SendMessage(Directory, 0)
-
-
+                self.__SendMessage(Directory, 0)
                 return "Clients can view a list of files and subdirectories in the server’s file storage path."
 
             case "cd":
@@ -60,79 +60,98 @@ class ClientHandle:
             case "Subfolder":
                 return "Clients can create or subfolders in the server’s file storage path"
 
+            case "RSA":
+                self.__ContactRSA()
+                return "Hello"
+
             case _:
                 return "I did not understand that command, please try again"
 
-    def Authenticate(self):
-        self.SendMessage ("Welcome to the Computer Networks Server! If you are a new user, press 0. "
+    def __Authenticate(self):
+        self.__SendMessage ("Welcome to the Computer Networks Server! If you are a new user, press 0. "
                     "If you already have a username, press 1")
 
         while True:
             data = self._conn.recv(1024).decode()
             if (data == '0'):
-                self.NewUserSetup()
-                self.SendMessage("Please Try to Log in With your New Account. Enter your username")
+                self.__NewUserSetup()
+                self.__SendMessage("Please Try to Log in With your New Account. Enter your username")
 
             elif (data == '1'):
-                self.SendMessage("Please enter your username")
+                self.__SendMessage("Please enter your username")
 
             else:
-                self.SendMessage("Please input either 0 for new user or 1 for current user")
+                self.__SendMessage("Please input either 0 for new user or 1 for current user")
                 continue
 
             while True:
                 data = self._conn.recv(1024)
-                if (self.FetchUser(data)):
+                if (self.__FetchUser(data)):
                     self._user = data
                     self._TryCounter = 0
-                    self.SendMessage("User Found, please enter your password")
+                    self.__SendMessage("User Found, please enter your password")
                     data = self._conn.recv(1024)
                     while True:
-                        if (self.FetchPass(data)):
-                            self.SendMessage("Authentication Complete. Welcome " + self._user.decode())
+                        if (self.__FetchPass(data)):
+                            self.__SendMessage("Authentication Complete. Welcome " + self._user.decode())
                             return True
                         else:
-                            if(self.Failed("Incorrect Password. Please Try Again")):
+                            if(self.__Failed("Incorrect Password. Please Try Again")):
                                 return False
 
                 else:
-                    if(self.Failed("Username Not Found. Please Try Again")):
+                    if(self.__Failed("Username Not Found. Please Try Again")):
                         return False
 
-    def NewUserSetup(self):
+    def __NewUserSetup(self):
         while True:
-            self.SendMessage("Please Enter a Username", 0)
+            self.__SendMessage("Please Enter a Username", 0)
             user = self._conn.recv(1024)
-            self.SendMessage("Is this the Username that you want? y? Enter anything for no", 0)
+            self.__SendMessage("Is this the Username that you want? y? Enter anything for no", 0)
             data = self._conn.recv(1024).decode().lower()
 
             if (data == 'y'):
                 while True:
-                    self.SendMessage("Please Enter a Password", 0)
+                    self.__SendMessage("Please Enter a Password", 0)
                     passcode = self._conn.recv(1024)
-                    self.SendMessage("Is this the password that you want? y? Enter anything for no", 0)
+                    self.__SendMessage("Is this the password that you want? y? Enter anything for no", 0)
                     data = self._conn.recv(1024).decode().lower()
 
                     if (data == 'y'):
-                        self.Server[user] = passcode
+                        self._Server[user] = passcode
                         return
 
-    def FetchUser(self, username):
-        for users in self.Server.keys():
+    def __FetchUser(self, username):
+        for users in self._Server.keys():
             if (users.decode() == username.decode()):
                 return True
 
         return False
 
-    def FetchPass(self, passcode):
-        return self.Server[self._user].decode() == passcode.decode()
+    def __FetchPass(self, passcode):
+        return self._Server[self._user].decode() == passcode.decode()
 
-    def Failed(self, message):
+    def __Failed(self, message):
         self._TryCounter += 1
         if (self._TryCounter == 4):
-            self.SendMessage("Failed to Authenticate, Access to Server Rejected. Connection is Closed", 1)
+            self.__SendMessage("Failed to Authenticate, Access to Server Rejected. Connection is Closed", 1)
             return True
-        self.SendMessage(message)
+        self.__SendMessage(message)
         return False
-    def SendMessage(self, message, state=0):
-        self._conn.send(message.encode() + f'~{self.states[state]}'.encode())
+    def __SendMessage(self, message, state=0):
+        self._conn.send(message.encode() + f'~{self._states[state]}'.encode())
+
+    def __Close(self):
+        self._conn.close()
+        del self
+
+    def __ContactRSA(self):
+        message = "Hello"
+        self._RSAserver.send(message.encode())
+
+    @classmethod
+    def SetRSA(cls, server):
+        if(cls._RSAserver == None):
+            cls._RSAserver = server
+
+

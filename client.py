@@ -1,5 +1,4 @@
 import socket
-import hashlib
 
 
 def client_program():

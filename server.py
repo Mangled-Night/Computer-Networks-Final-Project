@@ -15,13 +15,33 @@ def server_program():
     input_thread = threading.Thread(target=Console)
     input_thread.start()
 
+    #Connect to the RSA Encryption Server
+    #encryption_server = threading.Thread(target=ConnectToRSA)
+    #encryption_server.start()
+
     while True:
         # Accept new connection
         conn, address = server_socket.accept()
 
         # Start a new thread to handle each client
-        client_thread = threading.Thread(target=ClientHandle(conn, address).handle_client(), args=(conn, address))
+        client_thread = threading.Thread(target=ClientHandle(conn, address).handle_client)
         client_thread.start()
+
+def ConnectToRSA():
+    host = socket.gethostname()
+    rsa_server = socket.socket()
+    rsa_server.connect((host, 4000))
+    ClientHandle.SetRSA(rsa_server)
+
+    while True:
+        try:
+            rsa_server.recv(1024)
+        except:
+            print("Connection to RSA Server Terminated")
+            rsa_server.close()
+            break
+
+
 
 
 def Console():
