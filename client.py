@@ -1,4 +1,5 @@
 import socket
+import time
 
 
 def client_program():
@@ -13,11 +14,12 @@ def client_program():
 
     while message.lower().strip() != 'bye':
         try:
-            client_socket.send(message.encode()) # send message
+            if (message != ""):
+                client_socket.send(message.encode()) # send message
             data = client_socket.recv(1024).decode()  # receive response
         except:
             client_socket.close()
-            print("Connection has been terminated")
+            print("Connection does not exist")
             return
 
         if(data == ""):
@@ -27,12 +29,17 @@ def client_program():
 
         clientData, serverState = data.split('~')
         print('Received from server: ' + clientData)  # show in terminal
+        client_socket.send("ACK".encode())
+
 
         if(serverState == states[0]):
             message = input(" -> ")  # again take input
-
+        else:
+            message = ""
 
     client_socket.close()  # close the connection
+
+
 
 
 if __name__ == '__main__':

@@ -12,6 +12,7 @@ def server_program():
     server_socket.listen(4)
     print("Server is listening on port", port)
 
+    #Input thread for server console, ensures when calling input it does not lock up the main thread
     input_thread = threading.Thread(target=Console)
     input_thread.start()
 
@@ -27,7 +28,7 @@ def server_program():
         client_thread = threading.Thread(target=ClientHandle(conn, address).handle_client)
         client_thread.start()
 
-def ConnectToRSA():
+def ConnectToRSA(): #Function for a thread to use
     host = socket.gethostname()
     rsa_server = socket.socket()
     rsa_server.connect((host, 4000))
@@ -41,9 +42,7 @@ def ConnectToRSA():
             rsa_server.close()
             break
 
-
-
-
+#Function for input thread to use
 def Console():
     command = ""
     while command.lower().strip() != 'shutdown':
