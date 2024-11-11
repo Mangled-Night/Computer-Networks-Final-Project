@@ -69,10 +69,10 @@ class ClientHandle:
 
             case "cd":
                 # Changes the current directory
-                return
+                self.__ChangeDirectory(data)
 
             case "subfolder":
-                # "Clients can create or subfolders in the server’s file storage path"
+                # "Clients can create or folders in the server’s file storage path"
                 self.__SubDir(data)
 
             case "rsa":
@@ -197,7 +197,6 @@ class ClientHandle:
         return data
 
     def __CheckInDir(self, target):
-        print(os.listdir(self._dir))
         return target in os.listdir(self._dir)
 
     # TODO Implement RSA Encryption
@@ -250,6 +249,8 @@ class ClientHandle:
     def __SendDir(self):
         Directory = self._dir
         for file in os.listdir(self._dir):
+            if(not '.' in file):
+                file = '.' + file
             Directory += '\n' + str(file)
         self.__SendMessage(Directory)
         self.__SendMessage("End of Directory")
@@ -283,9 +284,9 @@ class ClientHandle:
         if(command.lower() == "create"):
             if (not self.__CheckInDir(target)):     # Checks to see if the directory already exists
                 try:
-                    os.mkdir(file_path)
+                    os.mkdir(file_path)     # Try to make that Directory
                     self.__SendMessage(f"Directory {target} created.")
-                except:
+                except:     # Some OS are case-sensitive and some aren't, so it may or may not throw an error
                     self.__SendMessage(f"Error: Directory {target} already exists.")
             else:
                 self.__SendMessage(f"Error: Directory {target} already exists.")
@@ -306,6 +307,29 @@ class ClientHandle:
 
         else:
             self.__SendMessage("Error: I did not understand that command. Either create or delete a subdirectory")
+
+    def __ChangeDirectory(self, target):
+
+        if (target == ".."):    # Cannot travel up if already at root
+            if(self._dirDepth == 0):
+                self.__SendMessage("Error: Already in Root Directory")
+                return
+
+            else:    # Travel up the directory path
+                self._dirDepth -= 1
+                self._dir, _, _ = self._dir.rpartition("\\")
+                self.__SendMessage(f"Currently in {self._dir}")
+
+        elif (not self.__CheckInDir(target)):  # Checks to see if the directory exists
+            self.__SendMessage("Error: Cannot Find Target Directory")
+            return
+
+        else:   # Travel into a directory
+            self._dir = os.path.join(self._dir, target)
+            self._dirDepth += 1
+            self.__SendMessage(f"Currently in {self._dir}")
+
+
 
 
 # Other Functions
