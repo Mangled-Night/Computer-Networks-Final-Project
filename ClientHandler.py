@@ -1,6 +1,7 @@
 import threading
 import os
 import socket
+import shutil
 
 
 class ClientHandle:
@@ -33,18 +34,17 @@ class ClientHandle:
                 if (not data):
                     # If data is not received, close the connection
                     break
-                print("from connected user:", data)
                 command, _, request = data.partition(" ")
-                print(f'{command} {request}')
                 self.__commands(command, request)
 
             self.__Close()
         except ConnectionResetError or socket.error:  # Runs when client terminates the connection
             print("Connection Terminated By Host")
             self.__Close()
-        except:
-             print("Internal Server Error. Closing Connection")
-             self.__Close()
+        except Exception as e:
+            print(e)
+            print("Internal Server Error. Closing Connection")
+            self.__Close()
 
     def __commands(self, command, data):  # Sends commands to their respective helper function
         match command.lower():
@@ -72,7 +72,8 @@ class ClientHandle:
                 return
 
             case "subfolder":
-                return "Clients can create or subfolders in the server’s file storage path"
+                # "Clients can create or subfolders in the server’s file storage path"
+                self.__SubDir(data)
 
             case "rsa":
                 try:
@@ -195,6 +196,10 @@ class ClientHandle:
         data = data.decode() if decode else data
         return data
 
+    def __CheckInDir(self, target):
+        print(os.listdir(self._dir))
+        return target in os.listdir(self._dir)
+
     # TODO Implement RSA Encryption
     def __ContactRSA(self):  # Allows the thread to contact the RSA Server
         message = "Hello"
@@ -203,7 +208,7 @@ class ClientHandle:
 # Server-Client Functions
     # TODO Test the Upload Function. Need Client to Have Function
     def __Upload(self, file):  # Client Uploading a File
-        # in Theory, recciving the name of the file and not the file path
+        # in Theory, recciving the name of the file and not the file path. Uploads it to current directory
         file = os.path.join(self._dir, file)
         try:
             with open(file, 'xb') as f:  # Read it in binary mode and attempt to create a file
@@ -223,7 +228,7 @@ class ClientHandle:
 
     # TODO Test the Download Function. Need Client to Have Function
     def __Download(self, file):  # Client downloading a file from the server
-        # Either Receive File Name or Path
+        # Either Receive File Name or Path. Download from current directory
         file = os.path.join(self._dir, file)
         try:
             with open(file, 'rb') as f:  # Read the file in binary mode, no need to encode it
@@ -243,15 +248,16 @@ class ClientHandle:
             return
 
     def __SendDir(self):
-        Directory = ""
+        Directory = self._dir
         for file in os.listdir(self._dir):
             Directory += '\n' + str(file)
         self.__SendMessage(Directory)
         self.__SendMessage("End of Directory")
 
     def __Delete(self, file):   # Lets the User Delete a File
+        # Expects the name of the file, must also be in the current directory
         file_path = os.path.join(self._dir, file)
-        if(not os.path.exists(file_path)):  # Tries to find the file
+        if(not self.__CheckInDir(file)):  # Tries to find the file
             self.__SendMessage("Error: File Not Found")
 
         elif(not os.path.isfile(file_path)):    # Ensures that what was given was a file
@@ -264,6 +270,43 @@ class ClientHandle:
             if(confirmation == 'y'):    # Deletes the file
                 os.remove(file_path)
                 self.__SendMessage(f"{file} Has Been Removed")
+
+    def __SubDir(self, subcommand):     # Creates or deletes a subdirectory
+        # Assumes we are given the name
+        command, _, target = subcommand.partition(" ")
+        file_path = os.path.join(self._dir, target)
+
+        if(os.path.isfile(file_path) or '.' in target):      # Checks if the target is a file
+            self.__SendMessage("Error: Give a directory, not a file")
+            return
+
+        if(command.lower() == "create"):
+            if (not self.__CheckInDir(target)):     # Checks to see if the directory already exists
+                try:
+                    os.mkdir(file_path)
+                    self.__SendMessage(f"Directory {target} created.")
+                except:
+                    self.__SendMessage(f"Error: Directory {target} already exists.")
+            else:
+                self.__SendMessage(f"Error: Directory {target} already exists.")
+
+        elif(command.lower() == "delete"):
+            if (not self.__CheckInDir(target)):     # Checks to see if the directory exists
+                self.__SendMessage("Error: Cannot Find Target Directory")
+            else:
+                self.__SendMessage("Are you sure you want to delete this directory? "
+                                   "There is no undoing this action and all files within will be lost."
+                                   " y? Enter anything for no", 0)
+                # Ensures that the user wants to delete this directory
+
+                confirmation = self.__ReciveMessage()
+                if (confirmation == 'y'):  # Deletes the directory
+                    shutil.rmtree(file_path)
+                    self.__SendMessage(f"{target} Has Been Removed")
+
+        else:
+            self.__SendMessage("Error: I did not understand that command. Either create or delete a subdirectory")
+
 
 # Other Functions
     def __Close(self):  # Connection Was Closed, delete this object
