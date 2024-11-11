@@ -3,23 +3,7 @@ import os
 from ClientHandler import ClientHandle
 import time
 
-def send_file_to_server(file_path, host, port):
-    # Open the file in binary read mode
-    try:
-        # Reading file and sending data to server
-        file = open(file_path, "r")
-        data = file.read()
-        while data:
-            port.send(str(data).encode())
-            data = file.read()
-            # File is closed after data is sent
-        file.close()
 
-    except IOError:
-        print('You entered an invalid filename!\
-        Please enter a valid name')
-
-    print("File sent successfully.")
 files = "C:/Users/grant/PycharmProjects/pythonProject/ComNetProject/message.txt"
 
 def client_program():
@@ -52,7 +36,21 @@ def client_program():
         client_socket.send("ACK".encode())
 
         if message.lower().strip() == 'upload':
-            send_file_to_server(files, host, port)
+            try:
+                # Reading file and sending data to server
+                with open(files, "r") as file:
+                    data = file.read()
+                    while data:
+                        client_socket.send(str(data).encode())
+                        data = file.read()
+                        # File is closed after data is sent
+                    file.close()
+
+            except IOError:
+                print('You entered an invalid filename!\
+                Please enter a valid name')
+
+            print("File sent successfully.")
 
         if(serverState == states[0]):
             message = input(" -> ")  # again take input
