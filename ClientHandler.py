@@ -3,7 +3,6 @@ import os
 import socket
 import shutil
 
-
 class ClientHandle:
     # Static Variables for all client threads to use
     _Server = None
@@ -11,7 +10,7 @@ class ClientHandle:
     _states = ['Listening', 'Sending']
     _RSAServer = None
 
-    # initalize the class and create local variables
+    # initialize and define local variables and set up secure connection
     def __init__(self, connection, address):
         self._conn = connection
         self._addr = address
@@ -19,6 +18,7 @@ class ClientHandle:
         self._TryCounter = 0
         self._dirDepth = 0
         self._dir = ''
+
 
     # Main loop to handle client requests
     def handle_client(self):
@@ -74,13 +74,6 @@ class ClientHandle:
             case "subfolder":
                 # "Clients can create or folders in the server’s file storage path"
                 self.__SubDir(data)
-
-            case "rsa":
-                try:
-                    self.__ContactRSA()
-                except:
-                    self.__SendMessage("RSA Server Connection is Terminated", 0)
-
             case _:
                 self.__SendMessage("I did not understand that command, please try again")
 
@@ -171,10 +164,11 @@ class ClientHandle:
         timeout_counter = 0
         noACK = 0
         self._conn.settimeout(5)  # After 5 seconds, connection throws a timeout
+
         while True:
             try:  # Try to send a message to the client and waits for an ack back from the client
-                self._conn.send(message.encode() + f'~{self._states[state]}'.encode())
-                ack = self._conn.recv(1024).decode()
+                self._conn.send(ciphertext)
+                ack = self._conn.recv(1024)
             except socket.timeout:  # If timeout, increment the counter and resend
                 timeout_counter += 1
                 if (timeout_counter == 3):  # Timeout 3 times or noACK 5 times, presume unstable or dropped connection
@@ -191,20 +185,26 @@ class ClientHandle:
                     self.__Close()
                     break
 
-    def __ReciveMessage(self, decode=True):  # Reccive all messages from the client here
+    def __ReciveMessage(self):  # Reccive all messages from the client here
         data = self._conn.recv(1024)
-        data = data.decode() if decode else data
+
+
         return data
 
     def __CheckInDir(self, target):
         return target in os.listdir(self._dir)
 
     # TODO Implement RSA Encryption
-    def __ContactRSA(self):  # Allows the thread to contact the RSA Server
-        message = "Hello"
-        self._RSAServer.send(message.encode())
+    def __GetKey(self, type):  # Sends a request for RSA Keys
+        Encryption_socket = socket.socket()  # instantiate
+        Encryption_socket.connect(self._RSAServer)  # connect to the Encryption server
 
-        # Other Functions
+
+
+
+
+
+# Other Functions
     def __Close(self):  # Connection Was Closed, delete this object
         self._conn.close()
         self.WriteUserData()

@@ -28,9 +28,8 @@ def server_program():
         else:   # If empty, set as an empty dictionary
             ClientHandle.SetUserDict(dict([]))
 
-    # Connect to the RSA Encryption Server
-    #encryption_server = threading.Thread(target=ConnectToRSA)
-    #encryption_server.start()
+    ClientHandle.SetRSA((host, 4000))
+
 
     while True:
         # Accept new connection
@@ -40,19 +39,7 @@ def server_program():
         client_thread = threading.Thread(target=ClientHandle(conn, address).handle_client)
         client_thread.start()
 
-def ConnectToRSA(): # Function for a thread to use
-    host = socket.gethostname()
-    rsa_server = socket.socket()
-    rsa_server.connect((host, 4000))
-    ClientHandle.SetRSA(rsa_server)
 
-    while True:
-        try:
-            rsa_server.recv(1024)
-        except:
-            print("Connection to RSA Server Terminated")
-            rsa_server.close()
-            break
 
 # Function for input thread to use
 def Console():

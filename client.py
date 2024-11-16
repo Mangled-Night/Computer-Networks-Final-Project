@@ -29,7 +29,7 @@ def client_program():
 
         clientData, serverState = data.split('~')
         print('Received from server: ' + clientData)  # show in terminal
-        client_socket.send("ACK".encode())
+        client_socket.send("ACK")
 
 
         if(serverState == states[0]):
