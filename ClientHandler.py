@@ -164,6 +164,7 @@ class ClientHandle:
         timeout_counter = 0
         noACK = 0
         self._conn.settimeout(5)  # After 5 seconds, connection throws a timeout
+        #
 
         while True:
             try:  # Try to send a message to the client and waits for an ack back from the client
