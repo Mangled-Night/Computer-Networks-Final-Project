@@ -6,7 +6,7 @@ import shutil
 
 class ClientHandle:
     # Static Variables for all client threads to use
-    _Server = dict([])
+    _Server = None
     _Lock = threading.Lock()
     _states = ['Listening', 'Sending']
     _RSAServer = None
@@ -204,6 +204,25 @@ class ClientHandle:
         message = "Hello"
         self._RSAServer.send(message.encode())
 
+        # Other Functions
+    def __Close(self):  # Connection Was Closed, delete this object
+        self._conn.close()
+        self.WriteUserData()
+        del self
+
+    @classmethod
+    def SetRSA(cls, server):  # Sets up the connection to allow threads to talk to the server, can only be set once
+        if (cls._RSAServer == None):
+            cls._RSAServer = server
+    @classmethod
+    def SetUserDict(cls, dict):     # Sets us the user dictionary, can only be set once
+        if(cls._Server == None):
+            cls._Server = dict
+    @classmethod
+    def WriteUserData(cls):     # Writes the current dictionary to the Users File
+        with open("Users.txt", 'w') as file:
+            file.write(str(cls._Server))
+
 # Server-Client Functions
     # TODO Test the Upload Function. Need Client to Have Function
     def __Upload(self, file):  # Client Uploading a File
@@ -332,12 +351,6 @@ class ClientHandle:
 
 
 
-# Other Functions
-    def __Close(self):  # Connection Was Closed, delete this object
-        self._conn.close()
-        del self
 
-    @classmethod
-    def SetRSA(cls, server):  # Sets up the connection to allow threads to talk to the server, can only be set once
-        if (cls._RSAServer == None):
-            cls._RSAServer = server
+
+

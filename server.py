@@ -1,6 +1,9 @@
 import socket
 import threading
 from ClientHandler import ClientHandle
+import ast
+
+
 
 
 def server_program():
@@ -12,11 +15,20 @@ def server_program():
     server_socket.listen(4)
     print("Server is listening on port", port)
 
-    #Input thread for server console, ensures when calling input it does not lock up the main thread
+    # Input thread for server console, ensures when calling input it does not lock up the main thread
     input_thread = threading.Thread(target=Console)
     input_thread.start()
 
-    #Connect to the RSA Encryption Server
+    with open("Users.txt", 'r') as file:
+        data = file.read()
+
+        if data.strip():    # If the file is not empty, grab all users from the file
+            ClientHandle.SetUserDict(ast.literal_eval(data))
+
+        else:   # If empty, set as an empty dictionary
+            ClientHandle.SetUserDict(dict([]))
+
+    # Connect to the RSA Encryption Server
     #encryption_server = threading.Thread(target=ConnectToRSA)
     #encryption_server.start()
 
@@ -28,7 +40,7 @@ def server_program():
         client_thread = threading.Thread(target=ClientHandle(conn, address).handle_client)
         client_thread.start()
 
-def ConnectToRSA(): #Function for a thread to use
+def ConnectToRSA(): # Function for a thread to use
     host = socket.gethostname()
     rsa_server = socket.socket()
     rsa_server.connect((host, 4000))
@@ -42,7 +54,7 @@ def ConnectToRSA(): #Function for a thread to use
             rsa_server.close()
             break
 
-#Function for input thread to use
+# Function for input thread to use
 def Console():
     command = ""
     while command.lower().strip() != 'shutdown':
