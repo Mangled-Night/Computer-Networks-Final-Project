@@ -167,7 +167,7 @@ class ClientHandle:
 
         while True:
             try:  # Try to send a message to the client and waits for an ack back from the client
-                self._conn.send(ciphertext)
+                self._conn.send()
                 ack = self._conn.recv(1024)
             except socket.timeout:  # If timeout, increment the counter and resend
                 timeout_counter += 1
