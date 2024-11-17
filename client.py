@@ -16,8 +16,9 @@ def client_program():
         try:
             if (message != ""):
                 client_socket.send(message.encode()) # send message
-            data = client_socket.recv(1024).decode()  # receive response
-        except:
+            data = client_socket.recv(1024)  # receive response
+        except Exception as e:
+            print(e)
             client_socket.close()
             print("Connection does not exist")
             return
@@ -27,15 +28,15 @@ def client_program():
             print("Connection has been terminated")
             return
 
-        clientData, serverState = data.split('~')
-        print('Received from server: ' + clientData)  # show in terminal
-        client_socket.send("ACK")
+        #clientData, serverState = data.split('~')
+        print(f'Received from server: {data}')  # show in terminal
+        client_socket.send("ACK".encode())
 
 
-        if(serverState == states[0]):
-            message = input(" -> ")  # again take input
-        else:
-            message = ""
+        # if(serverState == states[0]):
+        #     message = input(" -> ")  # again take input
+        # else:
+        #     message = ""
 
     client_socket.close()  # close the connection
 

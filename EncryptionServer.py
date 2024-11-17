@@ -26,7 +26,7 @@ def EncryptionServer():
         conn, addr = server_socket.accept()
         print("Connection from: " + str(addr))
 
-        handler = threading.Thread(target=Thread_Handler(), args=(conn, addr))
+        handler = threading.Thread(target=Thread_Handler, args=(conn,))
         handler.start()
 
 
@@ -50,6 +50,7 @@ def RSAKeyGeneration(addr):  # Generates RSA Keys for the Server/Client Connecti
 
     # Adds the key pair to the key dictionary, if the client has connected before then the previous keys are overwritten
     KeyDict[addr] = (private_key, public_key)
+    print(KeyDict)
     return pem_public_key
 
 
@@ -64,26 +65,34 @@ def AESKeyGeneration():
     return aes_key_base64
 
 
-def Thread_Handler(conn, addr):
+def Thread_Handler(conn):
+    conn.settimeout(5)
     try:
-        data = conn.recv(1024)
-    except:
-        conn.close()
+        raw_data = conn.recv(1024).decode()
+        print(raw_data)
+        addr, data = raw_data.split('-')
 
-    method, _, payload = data.parition(" ")
+    except Exception as e:
+        print(e)
+        conn.close()
+        return
+
+    method, _, encrypt_type = data.partition(" ")
 
     match (method):
         case "Encrypt":
-            Encryption(payload, addr, conn)
+            Encryption(encrypt_type, addr, conn)
 
         case "Decrypt":
-            Decryption(payload, addr, conn)
+            Decryption(encrypt_type, addr, conn)
 
         case "RSA":
             conn.send(RSAKeyGeneration(addr))
 
         case "AES":
             conn.send(AESKeyGeneration())
+
+    conn.close()
 
 
 def Encryption(method, addr, conn):
@@ -92,12 +101,13 @@ def Encryption(method, addr, conn):
         public_key = KeyDict[addr][1]
 
         while True:
-            data = conn.recv()
+            conn.send("Hello".encode())
+            data = conn.recv(1024).decode()
             if(data == "-"):    # Signifies end of encryption sends, terminates the loop
                 break
 
             encrypted_data = public_key.encrypt(
-                data,
+                data.encode(),
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
                     algorithm=hashes.SHA256(),
@@ -121,7 +131,7 @@ def Encryption(method, addr, conn):
         encryptor = cipher.encryptor()
 
         while True:
-            data = conn.recv()
+            data = conn.recv(1024)
             if (data == "-"):    # Signifies end of encryption sends, terminates the loop
                 break
 
@@ -135,7 +145,8 @@ def Decryption(method, addr, conn):
         private_key = KeyDict[addr][0]
 
         while True:
-            data = conn.recv()
+            conn.send("  ".encode())
+            data = conn.recv(1024)
             if(data == "-"):     # Signifies end of decryption sends, terminates the loop
                 break
 
@@ -151,10 +162,10 @@ def Decryption(method, addr, conn):
 
     elif (method == "AES"):     # Server is downloading file data from the client and needs to decrypt it
         conn.send("key")
-        key = conn.recv()
+        key = conn.recv(1024)
 
         conn.semd("iv")
-        iv = conn.recv()        # Receives both AES key and iv from the server
+        iv = conn.recv(1024)        # Receives both AES key and iv from the server
 
         cipher = Cipher(
             algorithms.AES(key),
@@ -164,7 +175,7 @@ def Decryption(method, addr, conn):
         decryptor = cipher.decryptor()      # Makes an AES decryptor
 
         while True:
-            data = conn.recv()
+            data = conn.recv(1024)
             if(data == "-"):  # Signifies end of decryption sends, terminates the loop
                 break
 
