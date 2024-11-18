@@ -5,10 +5,9 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+import threading
 import base64
 from os import urandom
-import threading
-import time
 
 KeyDict = dict([])
 
@@ -41,7 +40,6 @@ def RSAKeyGeneration(addr):  # Generates RSA Keys for the Server/Client Connecti
     # Generates a public key to use from the private key
     public_key = private_key.public_key()
 
-
     # Serializes the ket to make it easier to send
     pem_public_key = public_key.public_bytes(
         encoding=serialization.Encoding.PEM,
@@ -49,20 +47,8 @@ def RSAKeyGeneration(addr):  # Generates RSA Keys for the Server/Client Connecti
     )
 
     # Adds the key pair to the key dictionary, if the client has connected before then the previous keys are overwritten
-    KeyDict[addr] = (private_key, public_key)
-    print(KeyDict)
+    KeyDict[addr] = [(private_key, public_key), None]
     return pem_public_key
-
-
-def AESKeyGeneration():
-    # Key and IV
-    aes_key = urandom(16)
-    iv = urandom(16)
-
-    # Serialize the AES key using Base64 encoding for transmission
-    aes_key_base64 = base64.b64encode(aes_key)
-
-    return aes_key_base64
 
 
 def Thread_Handler(conn):
@@ -77,52 +63,39 @@ def Thread_Handler(conn):
         conn.close()
         return
 
+    conn.settimeout(None)
     method, _, encrypt_type = data.partition(" ")
 
     match (method):
         case "Encrypt":
-            Encryption(encrypt_type, addr, conn)
+            Encryption(addr, conn)
 
         case "Decrypt":
-            Decryption(encrypt_type, addr, conn)
+            Decryption(addr, conn)
 
         case "RSA":
             conn.send(RSAKeyGeneration(addr))
 
         case "AES":
-            conn.send(AESKeyGeneration())
+            SetAESKey(addr, conn)
 
     conn.close()
+    print("Connection has been closed\n")
 
 
-def Encryption(method, addr, conn):
+def Encryption(addr, conn):
+    key = KeyDict[addr][1]  # Retrieve the key
 
-    if(method == "RSA"):       # Encrypt Client/Server messages with RSA
-        public_key = KeyDict[addr][1]
+    conn.send("Hello".encode())
+    while True:
+        data = conn.recv(1024)
+        if(data == b"-" or data == b''):  # Signifies end of encryption sends, terminates the loop
+            break
 
-        while True:
-            conn.send("Hello".encode())
-            data = conn.recv(1024).decode()
-            if(data == "-"):    # Signifies end of encryption sends, terminates the loop
-                break
-
-            encrypted_data = public_key.encrypt(
-                data.encode(),
-                padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                    algorithm=hashes.SHA256(),
-                    label=None
-                )
-            )
-
-            conn.send(encrypted_data)
-
-    elif(method == "AES"):      # If server is uploading to the client, encrypt the file data using AES
-
-        key = urandom(32)
+        # Generate a fresh IV for each block of data
         iv = urandom(16)
-        conn.send(f'{key} {iv}')
 
+        # Set up the cipher with the key and IV
         cipher = Cipher(
             algorithms.AES(key),
             modes.CTR(iv),
@@ -130,59 +103,59 @@ def Encryption(method, addr, conn):
         )
         encryptor = cipher.encryptor()
 
-        while True:
-            data = conn.recv(1024)
-            if (data == "-"):    # Signifies end of encryption sends, terminates the loop
-                break
+        # Encrypt the data
+        encrypted_data = encryptor.update(data)
 
-            encrypted_data = encryptor.update(data) + encryptor.finalize()
-            conn.send(encrypted_data)
+        # Send the IV and encrypted data together
+        conn.send(iv + encrypted_data)
 
 
+def Decryption(addr, conn):
+    key = KeyDict[addr][1]
 
-def Decryption(method, addr, conn):
-    if (method == "RSA"):       # Decrypt Client/Server messages with RSA
-        private_key = KeyDict[addr][0]
-
-        while True:
-            conn.send("  ".encode())
-            data = conn.recv(1024)
-            if(data == "-"):     # Signifies end of decryption sends, terminates the loop
-                break
-
-            decrypted_data = private_key.decrypt(       # Using the private key to decrypt data
-                data,
-                padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                    algorithm=hashes.SHA256(),
-                    label=None
-                )
-            )
-            conn.send(decrypted_data)
-
-    elif (method == "AES"):     # Server is downloading file data from the client and needs to decrypt it
-        conn.send("key")
-        key = conn.recv(1024)
-
-        conn.semd("iv")
-        iv = conn.recv(1024)        # Receives both AES key and iv from the server
+    conn.send("Hello".encode())
+    while True:
+        data = conn.recv(2048)
+        if(data == b"-" or data == b''):  # Signifies end of decryption sends, terminates the loop
+            break
 
         cipher = Cipher(
             algorithms.AES(key),
-            modes.CTR(iv),
+            modes.CTR(data[:16]),
             backend=default_backend()
         )
-        decryptor = cipher.decryptor()      # Makes an AES decryptor
+        decryptor = cipher.decryptor()  # Makes an AES decryptor
 
-        while True:
-            data = conn.recv(1024)
-            if(data == "-"):  # Signifies end of decryption sends, terminates the loop
-                break
+        # half_decrypt = KeyDict[addr][0][0].decrypt(  # Decrypts the data using the private key
+        #     data,
+        #     padding.OAEP(
+        #         mgf=padding.MGF1(algorithm=hashes.SHA256()),
+        #         algorithm=hashes.SHA256(),
+        #         label=None
+        #     )
+        # )
 
-            decrypted_data = decryptor.update(data) + decryptor.finalize()  # Decrypts received data
-            conn.send(decrypted_data)        # Sends decrypted data to the server
+        decrypted_data = decryptor.update(data[16:]) + decryptor.finalize()  # fully decrypts data
+        print(decrypted_data)
+        conn.send(decrypted_data)  # Sends decrypted data to the server
 
 
+def SetAESKey(addr, conn):
+    conn.send("Hello".encode())  # Confirmation Message
+    encrypted_key = conn.recv(2048)  # Receives the encrypted key
+    conn.send("Hello".encode())
+    decrypted_key = KeyDict[addr][0][0].decrypt(  # Decrypts the AES Key
+        encrypted_key,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+
+    key = base64.b64decode(decrypted_key)
+    KeyDict[addr][1] = key  # Turns it back into its original tuple and saves it
+    print(KeyDict[addr])
 
 if __name__ == '__main__':
     EncryptionServer()

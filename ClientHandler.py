@@ -23,7 +23,8 @@ class ClientHandle:
     # Main loop to handle client requests
     def handle_client(self):
         print("Connection from: " + str(self._addr))
-        self._conn.send(self.__GetKey(True))     # Sends the public key to the client
+        self._conn.send(self.__GetRSAKey())     # Sends the public key to the client
+        self.__ReturnAESKey(self._conn.recv(1024))
 
         try:
             if (not self.__Authenticate()):  # Failed Authentication Denies Access To Server Commands
@@ -45,12 +46,12 @@ class ClientHandle:
              self.__Close()
         except OSError:
             pass
-        except Exception as e:
-             print(e)
-             print("Internal Server Error. Closing Connection")
-             self.__Close()
-        finally:
-            pass
+        # except Exception as e:
+        #      print(e)
+        #      print("Internal Server Error. Closing Connection")
+        #      self.__Close()
+        # finally:
+        #     pass
 
     def __commands(self, command, data):  # Sends commands to their respective helper function
         match command.lower():
@@ -112,8 +113,8 @@ class ClientHandle:
                         data = self.__ReciveMessage()
                         if (self.__FetchPass(data)):  # Tries to see if password matches the password associated
                             # with that user
-                            self.__SendMessage("Authentication Complete. Welcome " + self._user.decode())
-                            self._dir = os.path.join(os.getcwd(), self._user.decode())
+                            self.__SendMessage("Authentication Complete. Welcome " + self._user)
+                            self._dir = os.path.join(os.getcwd(), self._user)
                             return True
 
                         else:  # Failed Password Attempt
@@ -144,7 +145,7 @@ class ClientHandle:
 
                     if (data == 'y'):
                         self._Server[user] = passcode  # Adds username and password to dictionary
-                        os.mkdir(user.decode())  # Makes a directory for that user within the Server
+                        os.mkdir(user)  # Makes a directory for that user within the Server
                         return
 
     def __FetchUser(self, username):  # Gets a username from the dictionary
@@ -154,7 +155,7 @@ class ClientHandle:
             return False
 
     def __FetchPass(self, passcode):  # Gets a password from the dictionary
-        return self._Server[self._user].decode() == passcode.decode()  # Sees if the given password matches
+        return self._Server[self._user] == passcode  # Sees if the given password matches
                                                                         # the one in the dictionary
 
     def __Failed(self, message):  # If an authentication attempt failed
@@ -169,13 +170,14 @@ class ClientHandle:
     def __SendMessage(self, message, state=1):  # Send all messages to the client here
         timeout_counter = 0
         noACK = 0
-        self._conn.settimeout(5)  # After 5 seconds, connection throws a timeout
+        #self._conn.settimeout(5)  # After 5 seconds, connection throws a timeout
         message += f'~{self._states[state]}'
 
         while True:
             try:  # Try to send a message to the client and waits for an ack back from the client
                 self._conn.send(self.__MessageEncrypt(message.encode()))
                 ack = self.__ReciveMessage()
+                print(f'ack: {ack}')
             except socket.timeout:  # If timeout, increment the counter and resend
                 timeout_counter += 1
                 if (timeout_counter == 3):  # Timeout 3 times or noACK 5 times, presume unstable or dropped connection
@@ -187,7 +189,6 @@ class ClientHandle:
                     self._conn.settimeout(None)
                     break
                 noACK += 1  # Increment the number of times we didn't get an ACK
-                print("No ACK Received")
                 if(noACK == 5):
                     print("Connection with host is unstable or terminated")
                     self.__Close()
@@ -196,49 +197,120 @@ class ClientHandle:
 
     def __ReciveMessage(self):  # Reccive all messages from the client here
         data = self._conn.recv(1024)
-        return self.__MessageDecrypt(data)
+        if(data == b''):
+            self.__Close()
+            return None
+        return self.__MessageDecrypt(data).decode()
 
     def __CheckInDir(self, target):
         return target in os.listdir(self._dir)
 
-    def __GetKey(self, key_type=False):  # Sends a request for Encryption Keys
+    def __GetRSAKey(self):  # Sends a request for Encryption Keys
         Encryption_socket = socket.socket()
         Encryption_socket.connect(self._RSAServer)  # connect to the Encryption server
         Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
 
-        if(key_type):
-            Encryption_socket.send("RSA".encode())
+        # Recieve and Return the Public Key
+        Encryption_socket.send("RSA".encode())
+        return Encryption_socket.recv(1024)
 
-            return Encryption_socket.recv(1024)
-        else:
-            Encryption_socket.send("AES".encode())
-            return Encryption_socket.recv(1024)
+    def __ReturnAESKey(self, key):
+        Encryption_socket = socket.socket()
+        Encryption_socket.connect(self._RSAServer)  # connect to the Encryption server
+        Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
+
+        Encryption_socket.send("AES".encode())
+        Encryption_socket.recv(1024)  # Confirmation, ready for payload
+        key_send = 0
+        Encryption_socket.settimeout(5)
+
+        while True:
+            try:
+                Encryption_socket.send(key)
+                Encryption_socket.recv(1024)  # Confirmation, key was received
+            except:
+                key_send += 1
+                if(key_send == 4):
+                    print("Cannot Communicate to the Encryption Server")
+                    self.__Close()
+            else:
+                Encryption_socket.settimeout(None)
+                break
+
+
 
     def __MessageEncrypt(self, payload):   # Sends a request for one-time encryption
         Encryption_socket = socket.socket()
         Encryption_socket.connect(self._RSAServer)
-        Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
 
-        print(payload)
-        # Requests RSA Encryption for a message
-        Encryption_socket.send("Encrypt RSA".encode())
-        Confimation = Encryption_socket.recv(1024)  # Confirmation, ready for payload
-        print(Confimation)
-        Encryption_socket.send(payload)
-        encrypted_payload = Encryption_socket.recv(1024)
-        Encryption_socket.send('-'.encode())
+        sends = 0
+        Encryption_socket.settimeout(5)
+        try:
+            Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption
+                                                                        # Server
+            # Requests RSA Encryption for a message
+            Encryption_socket.send("Encrypt".encode())
+            Encryption_socket.recv(1024)  # Confirmation, ready for payload
+        except:
+            sends += 1
+            if(sends == 3):
+                print("Cannot Communicate to the Encryption Server")
+                Encryption_socket.close()
+                self.__Close()
+                return
+
+        while True:
+            key_send = 0
+            try:
+                Encryption_socket.send(payload)
+                encrypted_payload = Encryption_socket.recv(1024)
+            except:
+                key_send += 1
+                if (key_send == 3):
+                    print("Cannot Communicate to the Encryption Server")
+                    self.__Close()
+                    return
+            else:
+                Encryption_socket.send('-'.encode())
+                Encryption_socket.settimeout(None)
+                break
 
         return encrypted_payload
 
     def __MessageDecrypt(self, payload):   # Sends a request for one-time decryption
         Encryption_socket = socket.socket()
         Encryption_socket.connect(self._RSAServer)
-        Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
 
-        Encryption_socket.send("Decrypt RSA".encode())
-        Encryption_socket.send(payload)
-        decrypted_payload = Encryption_socket.recv(1024)
-        Encryption_socket.send('-'.encode())
+        sends = 0
+        Encryption_socket.settimeout(5)
+        try:
+            Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption
+                                                                        # Server
+            # Requests RSA Encryption for a message
+            Encryption_socket.send("Decrypt".encode())
+            Encryption_socket.recv(1024)  # Confirmation, ready for payload
+        except:
+            sends += 1
+            if(sends == 3):
+                print("Cannot Communicate to the Encryption Server")
+                Encryption_socket.close()
+                self.__Close()
+                return
+
+        key_send = 0
+        while True:
+            try:
+                Encryption_socket.send(payload)
+                decrypted_payload = Encryption_socket.recv(1024)
+            except:
+                key_send += 1
+                if (key_send == 4):
+                    print("Cannot Communicate to the Encryption Server")
+                    self.__Close()
+            else:
+                Encryption_socket.send('-'.encode())
+                Encryption_socket.settimeout(None)
+                break
 
         return decrypted_payload
 
