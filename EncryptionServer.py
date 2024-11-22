@@ -10,8 +10,6 @@ import base64
 from os import urandom
 
 KeyDict = dict([])
-
-
 def EncryptionServer():
     port = 4000  # Port to bind the server
     host = socket.gethostname()

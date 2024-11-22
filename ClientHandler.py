@@ -46,12 +46,12 @@ class ClientHandle:
              self.__Close()
         except OSError:
             pass
-        # except Exception as e:
-        #      print(e)
-        #      print("Internal Server Error. Closing Connection")
-        #      self.__Close()
-        # finally:
-        #     pass
+        except Exception as e:
+            print(e)
+            print("Internal Server Error. Closing Connection")
+            self.__Close()
+        finally:
+             pass
 
     def __commands(self, command, data):  # Sends commands to their respective helper function
         match command.lower():
