@@ -3,7 +3,7 @@ import os
 import socket
 import shutil
 import analysisModule
-import time
+
 
 class ClientHandle:
     # Static Variables for all client threads to use
