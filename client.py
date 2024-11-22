@@ -12,12 +12,14 @@ import base64
 
 def client_program():
     states = ['Listening', 'Sending', "ACK"]
-    message = ""  # take input
+    message = ''  # take input
 
     host = socket.gethostname()  # as both code is running on same pc
     port = 5000  # socket server port number
     client_socket = socket.socket()  # instantiate
     client_socket.connect((host, port))  # connect to the server
+
+    
 
     # Key Exchange for Encryption Handshake
     key = urandom(32)
@@ -64,43 +66,27 @@ def client_program():
                         client_socket.send(data)
                         data = fi.read(1024)
                     # File is closed after data is sent
-                final_response = client_socket.recv(1024)
-                print(f"Server response: {final_response}")
+                client_socket.send("ACK".encode())
 
             except IOError:
                 print('You entered an invalid filename!\
                 Please enter a valid name')
-            if message.startswith('upload'):
-                file_name = message.split(' ', 1)[1]
-                try:
-                    # Reading file and sending data to server
-                    with open(file_name, "rb") as fi:
-                        data = fi.read(1024)
-                        while data:
-                            client_socket.send(data)
-                            data = fi.read(1024)
-                        # File is closed after data is sent
-                    final_response = client_socket.recv(1024)
-                    print(f"Server response: {final_response}")
+        if message.startswith('download'):
+            files_name = message.split(' ', 1)[1]
+            try:
+                # Reading file and sending data to server
+                with open(files_name, "xb") as fil:
+                    file_data = client_socket.recv(1024).decode()
+                    if not file_data:  # Stop if no more data
+                        break
+                    fil.write(file_data)
+                client_socket.send("ACK".encode())
+                    # File is closed after data is sent
+                print(f"Downloaded: {files_name}")
 
-                except IOError:
-                    print('You entered an invalid filename!\
-                    Please enter a valid name')
-            if message.startswith('download'):
-                files_name = message.split(' ', 1)[1]
-                try:
-                    # Reading file and sending data to server
-                    with open(files_name, "xb") as fil:
-                        file_data = client_socket.recv(1024).decode()
-                        if not file_data:  # Stop if no more data
-                            break
-                        fil.write(file_data)
-                        # File is closed after data is sent
-                    print(f"Downloaded: {files_name}")
-
-                except IOError:
-                    print('You entered an invalid filename!\
-                    Please enter a valid name')
+            except IOError:
+                print('You entered an invalid filename!\
+                Please enter a valid name')
     client_socket.close()  # close the connection
 
 
