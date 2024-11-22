@@ -170,7 +170,7 @@ class ClientHandle:
     def __SendMessage(self, message, state=1):  # Send all messages to the client here
         timeout_counter = 0
         noACK = 0
-        #self._conn.settimeout(5)  # After 5 seconds, connection throws a timeout
+        self._conn.settimeout(5)  # After 5 seconds, connection throws a timeout
         message += f'~{self._states[state]}'
 
         while True:
@@ -313,13 +313,19 @@ class ClientHandle:
 
         return decrypted_payload
 
+    def __RemoveKeys(self):
+        Encryption_socket = socket.socket()
+        Encryption_socket.connect(self._RSAServer)
 
+        Encryption_socket.send((str(self._addr) + f'-').encode())
+        Encryption_socket.send("Remove")
 
 
 # Other Functions
     def __Close(self):  # Connection Was Closed, delete this object
         self._conn.close()
         self.WriteUserData()
+        self.__RemoveKeys()
         del self
 
     @classmethod
@@ -334,7 +340,6 @@ class ClientHandle:
     def WriteUserData(cls):     # Writes the current dictionary to the Users File
         with open("Users.txt", 'w') as file:
             file.write(str(cls._UserDict))
-
 # Server-Client Functions
     # TODO Test the Upload Function. Need Client to Have Function
     def __Upload(self, file):  # Client Uploading a File
@@ -344,7 +349,7 @@ class ClientHandle:
             with open(file, 'xb') as f:  # Read it in binary mode and attempt to create a file
                 while True:
                     file_data = self._conn.recv(1024).decode()
-                    if not file_data:  # Stop if no more data
+                    if file_data == '-':  # Stop if no more data
                         self.__SendMessage("File Upload Complete!")
                         break
                     f.write(file_data)
@@ -408,12 +413,10 @@ class ClientHandle:
         command, _, target = subcommand.partition(" ")
         file_path = os.path.join(self._dir, target)
 
-        if(os.path.isfile(file_path) or '.' in target):      # Checks if the target is a file
-            self.__SendMessage("Error: Give a directory, not a file")
-            return
-
         if(command.lower() == "create"):
-            if (not self.__CheckInDir(target)):     # Checks to see if the directory already exists
+            if(target == ""):
+                self.__SendMessage("Error: Name cannot be blank")
+            elif (not self.__CheckInDir(target)):     # Checks to see if the directory already exists
                 try:
                     os.mkdir(file_path)     # Try to make that Directory
                     self.__SendMessage(f"Directory {target} created.")
@@ -425,6 +428,11 @@ class ClientHandle:
         elif(command.lower() == "delete"):
             if (not self.__CheckInDir(target)):     # Checks to see if the directory exists
                 self.__SendMessage("Error: Cannot Find Target Directory")
+
+            elif (os.path.isfile(file_path) or '.' in target):  # Checks if the target is a file
+                self.__SendMessage("Error: Give a directory, not a file")
+                return
+
             else:
                 self.__SendMessage("Are you sure you want to delete this directory? "
                                    "There is no undoing this action and all files within will be lost."

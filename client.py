@@ -51,6 +51,24 @@ def client_program():
         else:
             message = ""
 
+        if message.startswith('upload'):
+            file_name = message.split(' ', 1)[1]
+            client_socket.send(Encrpyt(f'Upload {file_name}'))
+            try:
+                # Reading file and sending data to server
+                with open(file_name, "rb") as fi:
+                    data = fi.read(1024)
+                    while data:
+                        client_socket.send(data)
+                        data = fi.read(1024)
+                    # File is closed after data is sent
+                final_response = client_socket.recv(1024)
+                print(f"Server response: {final_response}")
+
+            except IOError:
+                print('You entered an invalid filename!\
+                        Please enter a valid name')
+
     client_socket.close()  # close the connection
 
 
