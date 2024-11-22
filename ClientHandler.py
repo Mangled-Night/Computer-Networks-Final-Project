@@ -84,7 +84,7 @@ class ClientHandle:
             case _:
                 self.__SendMessage("I did not understand that command, please try again")
 
-# Authentication Methods
+# Authentication/Account Creation
     def __Authenticate(self):  # Client Authentication Preformed Here
         self.__SendMessage("Welcome to the Computer Networks Server! If you are a new user, press 0. "
                            "If you already have a username, press 1", 0)

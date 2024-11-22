@@ -53,18 +53,16 @@ def Thread_Handler(conn):
     conn.settimeout(5)
     try:
         raw_data = conn.recv(1024).decode()
-        #print(raw_data)
-        addr, data = raw_data.split('-')
+        addr, request = raw_data.split('-')
 
     except Exception as e:
         print(e)
         conn.close()
         return
+    else:
+        conn.settimeout(None)
 
-    conn.settimeout(None)
-    method, _, encrypt_type = data.partition(" ")
-
-    match (method):
+    match (request):
         case "Encrypt":
             Encryption(addr, conn)
 
@@ -77,12 +75,16 @@ def Thread_Handler(conn):
         case "AES":
             SetAESKey(addr, conn)
 
+        case "Remove":
+            RemoveKey(addr)
+
     conn.close()
     #print("Connection has been closed\n")
 
 
 def Encryption(addr, conn):
     key = KeyDict[addr][1]  # Retrieve the key
+    sendIV = False
 
     conn.send("Hello".encode())
     while True:
@@ -105,11 +107,18 @@ def Encryption(addr, conn):
         encrypted_data = encryptor.update(data)
 
         # Send the IV and encrypted data together
-        conn.send(iv + encrypted_data)
+        if(not sendIV):
+            conn.send(iv + encrypted_data)
+            sendIV = True
+        else:
+            conn.send(encrypted_data)
+
 
 
 def Decryption(addr, conn):
     key = KeyDict[addr][1]
+    setIV= False
+    iv = None
 
     conn.send("Hello".encode())
     while True:
@@ -117,9 +126,14 @@ def Decryption(addr, conn):
         if(data == b"-" or data == b''):  # Signifies end of decryption sends, terminates the loop
             break
 
+        if(not setIV):
+            iv = data[:16]
+            data = data[16:]
+            setIV = True
+
         cipher = Cipher(
             algorithms.AES(key),
-            modes.CTR(data[:16]),
+            modes.CTR(iv),
             backend=default_backend()
         )
         decryptor = cipher.decryptor()  # Makes an AES decryptor
@@ -133,7 +147,7 @@ def Decryption(addr, conn):
         #     )
         # )
 
-        decrypted_data = decryptor.update(data[16:]) + decryptor.finalize()  # fully decrypts data
+        decrypted_data = decryptor.update(data) + decryptor.finalize()  # fully decrypts data
         #print(decrypted_data)
         conn.send(decrypted_data)  # Sends decrypted data to the server
 
@@ -154,6 +168,9 @@ def SetAESKey(addr, conn):
     key = base64.b64decode(decrypted_key)
     KeyDict[addr][1] = key  # Turns it back into its original tuple and saves it
     #print(KeyDict[addr])
+
+def RemoveKey(addr):
+    KeyDict.pop(addr)
 
 if __name__ == '__main__':
     EncryptionServer()
