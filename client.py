@@ -8,11 +8,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 import base64
-import tkinter as tk
-from tkinter import filedialog
 
 
-files = "C:/Users/grant/PycharmProjects/pythonProject/ComNetProject/Message.txt"
 def client_program():
     states = ['Listening', 'Sending', "ACK"]
     message = ""  # take input
@@ -57,32 +54,37 @@ def client_program():
             message = input(" -> ")  # again take input
         else:
             message = ""
-        if message == 'upload':
-
-            root = tk.Tk()
-            button = tk.Button(root, text='Open', command=UploadAction)
-            button.pack()
-
-            root.mainloop()
+        if message == 'upload file':
+            user_file = input('Input filename you want to send: ')
+            client_socket.send('upload '.encode() + user_file.encode())
+            client_socket.send(user_file.encode())
             try:
                 # Reading file and sending data to server
-                with open(filesname, "r") as file:
-                    while chunk := file.read(1024):  # Read in 1KB chunks
-                        client_socket.send(Encrypt(public_key, chunk, key))
+                with open(user_file, "rb") as fi:
+                    data = fi.read(1024)
+                    while data:
+                        client_socket.send(data)
+                        data = fi.read(1024)
                     # File is closed after data is sent
-                print("File sent successfully.")
+                fi.close()
+                final_response = client_socket.recv(1024)
+                print(f"Server response: {final_response}")
+
             except IOError:
                 print('You entered an invalid filename!\
-                       Please enter a valid name')
+                Please enter a valid name')
+
+        # if message == 'download':
+            # action = input("Enter the name of the file you want to download.")
+            # _file = action
+            # try:
+                # with open() as fil:
+
+
 
 
     client_socket.close()  # close the connection
 
-
-def UploadAction(event=None):
-    global filesname
-    filesname = filedialog.askopenfilename()
-    print('Selected:', filesname)
 
 def SendKeys(conn, public_key, AES_key):
     encoded_key = base64.b64encode(AES_key)
