@@ -5,7 +5,7 @@ import shutil
 
 class ClientHandle:
     # Static Variables for all client threads to use
-    _Server = None
+    _UserDict = None
     _Lock = threading.Lock()
     _states = ['Listening', 'Sending']
     _RSAServer = None
@@ -144,18 +144,18 @@ class ClientHandle:
                     data = self.__ReciveMessage().lower()  # Receives and ensures that this is the password they want
 
                     if (data == 'y'):
-                        self._Server[user] = passcode  # Adds username and password to dictionary
+                        self._UserDict[user] = passcode  # Adds username and password to dictionary
                         os.mkdir(user)  # Makes a directory for that user within the Server
                         return
 
     def __FetchUser(self, username):  # Gets a username from the dictionary
-        if (self._Server.get(username) != None):  # If get Returns a user, then that username is in the dictionary
+        if (self._UserDict.get(username) != None):  # If get Returns a user, then that username is in the dictionary
             return True
         else:
             return False
 
     def __FetchPass(self, passcode):  # Gets a password from the dictionary
-        return self._Server[self._user] == passcode  # Sees if the given password matches
+        return self._UserDict[self._user] == passcode  # Sees if the given password matches
                                                                         # the one in the dictionary
 
     def __Failed(self, message):  # If an authentication attempt failed
@@ -177,7 +177,6 @@ class ClientHandle:
             try:  # Try to send a message to the client and waits for an ack back from the client
                 self._conn.send(self.__MessageEncrypt(message.encode()))
                 ack = self.__ReciveMessage()
-                print(f'ack: {ack}')
             except socket.timeout:  # If timeout, increment the counter and resend
                 timeout_counter += 1
                 if (timeout_counter == 3):  # Timeout 3 times or noACK 5 times, presume unstable or dropped connection
@@ -329,12 +328,12 @@ class ClientHandle:
             cls._RSAServer = server
     @classmethod
     def SetUserDict(cls, dict):     # Sets us the user dictionary, can only be set once
-        if(cls._Server == None):
-            cls._Server = dict
+        if(cls._UserDict == None):
+            cls._UserDict = dict
     @classmethod
     def WriteUserData(cls):     # Writes the current dictionary to the Users File
         with open("Users.txt", 'w') as file:
-            file.write(str(cls._Server))
+            file.write(str(cls._UserDict))
 
 # Server-Client Functions
     # TODO Test the Upload Function. Need Client to Have Function

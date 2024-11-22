@@ -55,7 +55,7 @@ def Thread_Handler(conn):
     conn.settimeout(5)
     try:
         raw_data = conn.recv(1024).decode()
-        print(raw_data)
+        #print(raw_data)
         addr, data = raw_data.split('-')
 
     except Exception as e:
@@ -80,7 +80,7 @@ def Thread_Handler(conn):
             SetAESKey(addr, conn)
 
     conn.close()
-    print("Connection has been closed\n")
+    #print("Connection has been closed\n")
 
 
 def Encryption(addr, conn):
@@ -136,7 +136,7 @@ def Decryption(addr, conn):
         # )
 
         decrypted_data = decryptor.update(data[16:]) + decryptor.finalize()  # fully decrypts data
-        print(decrypted_data)
+        #print(decrypted_data)
         conn.send(decrypted_data)  # Sends decrypted data to the server
 
 
@@ -155,7 +155,7 @@ def SetAESKey(addr, conn):
 
     key = base64.b64decode(decrypted_key)
     KeyDict[addr][1] = key  # Turns it back into its original tuple and saves it
-    print(KeyDict[addr])
+    #print(KeyDict[addr])
 
 if __name__ == '__main__':
     EncryptionServer()

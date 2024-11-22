@@ -19,6 +19,11 @@ def server_program():
     input_thread = threading.Thread(target=Console)
     input_thread.start()
 
+    try:
+        open("Users.txt", 'x')
+    except FileExistsError:
+        pass
+
     with open("Users.txt", 'r') as file:
         data = file.read()
 
