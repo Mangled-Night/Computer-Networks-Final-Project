@@ -167,6 +167,10 @@ class ClientHandle:
             return True
         self.__SendMessage(message, 0)
         return False
+    def __SaveStats(self):
+    analysisModule.save_stats_to_csv()
+    self.__SendMessage("Operation statistics saved to CSV.")
+
 
 # General Methods
     def __SendMessage(self, message, state=1):  # Send all messages to the client here
@@ -347,20 +351,26 @@ class ClientHandle:
                 start_time = time.time() #starts counting
                 total_received = 0
 
-                while True:
-                    file_data = self._conn.recv(1024).decode()
-                    if not file_data:  # Stop if no more data
-                        self.__SendMessage("File Upload Complete!")
-                        break
-                    total_received += len(file_data)
-                    f.write(file_data)
+                 while True:
+                file_data = self._conn.recv(1024)
+                if not file_data:  # Stop if no more data
+                    self.__SendMessage("File Upload Complete!")
+                    break
+                total_received += len(file_data)
+                f.write(file_data)
 
-                elapsed_time = time.time() - start_time #time elapsed
-                upload_speed = total_received / (elapsed_time * 1024)
-                # do we move SendMessage to here
-        #            self.__SendMessage(
-        #                 f"File Upload Complete! Total: {total_received} bytes in {elapsed_time:.2f} seconds. Speed: {upload_speed:.2f} KB/s"
-        #             )
+            elapsed_time = time.time() - start_time  # Time elapsed
+            file_size_MB = total_received / (1024 * 1024)  # Convert bytes to MB
+            data_rate_MBps = file_size_MB / elapsed_time if elapsed_time > 0 else 0
+
+            # Record the stats
+            analysisModule.record_stats(
+                operation_type="upload",
+                file_size_MB=file_size_MB,
+                transfer_time_s=elapsed_time,
+                data_rate_MBps=data_rate_MBps,
+                response_time_s=elapsed_time  
+            )
         except FileExistsError:  # Duplicate Files cannot exist on the server
             self.__SendMessage("Error: This File Already Exists")
             return
@@ -379,20 +389,25 @@ class ClientHandle:
                 total_sent = 0
 
                 while True:
-                    file_data = f.read(1024)
-                    self._conn.send(file_data)
-                    if not file_data:  # Stop if no more data
-                        self.__SendMessage("File Download Complete!")
-                        break
-                    self._conn.send(file_data)
-                    total_sent += len(file_data)
+                file_data = f.read(1024)
+                if not file_data:  # Stop if no more data
+                    self.__SendMessage("File Download Complete!")
+                    break
+                self._conn.send(file_data)
+                total_sent += len(file_data)
 
-                elapsed_time = time.time() - start_time
-                download_speed = total_sent / (elapsed_time * 1024)
-        #   Same here do we move the send file to get statistics
-        #           self.__SendMessage(
-        #                 f"File Download Complete! Total: {total_sent} bytes in {elapsed_time:.2f} seconds. Speed: {download_speed:.2f} KB/s"
-        #             )
+            elapsed_time = time.time() - start_time  # Time elapsed
+            file_size_MB = total_sent / (1024 * 1024)  # Convert bytes to MB
+            data_rate_MBps = file_size_MB / elapsed_time if elapsed_time > 0 else 0
+
+            # Record the stats
+            analysisModule.record_stats(
+                operation_type="download",
+                file_size_MB=file_size_MB,
+                transfer_time_s=elapsed_time,
+                data_rate_MBps=data_rate_MBps,
+                response_time_s=elapsed_time  
+            )
 
         except FileNotFoundError:  # Could not find the file
             self.__SendMessage("Error: Cannot Find File")
