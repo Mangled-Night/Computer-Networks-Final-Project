@@ -2,7 +2,7 @@ import threading
 import os
 import socket
 import shutil
-
+import time
 
 class ClientHandle:
     # Static Variables for all client threads to use
@@ -175,8 +175,11 @@ class ClientHandle:
 
         while True:
             try:  # Try to send a message to the client and waits for an ack back from the client
+                start = time.time()
                 self._conn.send(self.__MessageEncrypt(message.encode()))
                 ack = self.__ReciveMessage()
+                end = time.time()
+                print(f"Elapsed time: {end - start} seconds")
             except socket.timeout:  # If timeout, increment the counter and resend
                 timeout_counter += 1
                 if (timeout_counter == 3):  # Timeout 3 times or noACK 5 times, presume unstable or dropped connection
