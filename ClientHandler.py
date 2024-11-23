@@ -275,7 +275,7 @@ class ClientHandle:
                     self.__Close()
                     return
             else:
-                Encryption_socket.send('-'.encode())
+                Encryption_socket.send(b'')
                 Encryption_socket.settimeout(None)
                 break
 
@@ -311,7 +311,7 @@ class ClientHandle:
                     print("Cannot Communicate to the Encryption Server")
                     self.__Close()
             else:
-                Encryption_socket.send('-'.encode())
+                Encryption_socket.send(b'')
                 Encryption_socket.settimeout(None)
                 break
 
@@ -338,8 +338,7 @@ class ClientHandle:
         with open("Users.txt", 'w') as file:
             file.write(str(cls._UserDict))
 
-    # Server-Client Functions
-    # TODO Test the Upload Function. Need Client to Have Function
+# Server-Client Functions
     def __Upload(self, file):  # Client Uploading a File
         # in Theory, receiving the name of the file and not the file path. Uploads it to current directory
         self._conn.send(self.__MessageEncrypt("Upload".encode()))
@@ -348,11 +347,23 @@ class ClientHandle:
         # Open a connection to the Encryption Server
         Encryption_socket = socket.socket()
         Encryption_socket.connect(self._RSAServer)
+        Encryption_socket.settimeout(5)
+        EncryptTimeout = 0
         Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
         Encryption_socket.send("Decrypt".encode())  # Requests RSA Encryption for a message
-        Encryption_socket.recv(1024)
+        while True:
+            try:
+                Encryption_socket.recv(1024)
+            except:
+                EncryptTimeout += 1
+                if (EncryptTimeout == 3):
+                    print("Cannot Communicate to the Encryption Server")
+                    self.__Close()
+                    return
+            else:
+                break
 
-        Encryption_socket.settimeout(5)
+
         self._conn.settimeout(5)
 
         try:
@@ -368,7 +379,7 @@ class ClientHandle:
                         self._conn.settimeout(None)
                         break
                     elif file_data == b'+': # Cancels the upload process
-                        self.__SendMessage("File Upload Cancelled")
+                        self.__SendMessage("User Request: File Upload Cancelled")
                         Encryption_socket.send("-".encode())
                         Encryption_socket.settimeout(None)
                         self._conn.settimeout(None)
@@ -389,7 +400,8 @@ class ClientHandle:
             os.remove(file)
             Encryption_socket.settimeout(None)
             self._conn.settimeout(None)
-            self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Upload")
+            self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Upload. Closing the connection")
+            self.__Close()
             return
 
 
@@ -397,21 +409,65 @@ class ClientHandle:
     def __Download(self, file):  # Client downloading a file from the server
         # Either Receive File Name or Path. Download from current directory
         file = os.path.join(self._dir, file)
+        self._conn.send(self.__MessageEncrypt("Download".encode()))
+
+
+        # Open a connection to the Encryption Server
+        Encryption_socket = socket.socket()
+        Encryption_socket.connect(self._RSAServer)
+        Encryption_socket.settimeout(5)
+        EncryptTimeout = 0
+        Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
+        Encryption_socket.send("Encrypt".encode())  # Requests RSA Encryption for a message
+
+        while True:
+            try:
+                Encryption_socket.recv(1024)
+            except:
+                EncryptTimeout += 1
+                if (EncryptTimeout == 3):
+                    print("Cannot Communicate to the Encryption Server")
+                    self.__Close()
+                    return
+            else:
+                break
+        self._conn.settimeout(5)
+        noACK = 0
+
+        confirm = self.__ReciveMessage()
+        if(confirm == '+'):
+            return
+        print("Starting Download")
+
         try:
             with open(file, 'rb') as f:  # Read the file in binary mode, no need to encode it
-                while True:
-                    file_data = f.read(1024)
-                    self._conn.send(file_data)
-                    if not file_data:  # Stop if no more data
-                        self.__SendMessage("File Download Complete!")
-                        break
+                file_data = f.read(1024)
+                while file_data:    # Automatically stops at EOF
+                    Encryption_socket.send(file_data)
+                    encrypted_bytes = Encryption_socket.recv(2048)
+                    self._conn.send(encrypted_bytes)
+                    Ack = self.__MessageDecrypt(self._conn.recv(1024)).decode()
+                    if(Ack != "ACK"):
+                        noACK += 1
+                        if(noACK == 3):
+                            print("De-synchronized Connection With Host")
+                            return
+                    else:
+                        file_data = f.read(1024)
+
+                self._conn.send(self.__MessageEncrypt("-".encode()))
+                self.__ReciveMessage()
+                self.__SendMessage("File Download Complete!")
 
         except FileNotFoundError:  # Could not find the file
             self.__SendMessage("Error: Cannot Find File")
+            self._conn.send(self.__MessageEncrypt('+'))
             return
 
         except:  # Error occurred during the transfer, stop the transfer
-            self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Download")
+            self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Download. Closing the connection")
+            self._conn.send(self.__MessageEncrypt('+'))
+            self.__Close()
             return
 
     def __SendDir(self):

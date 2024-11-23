@@ -89,7 +89,7 @@ def Encryption(addr, conn):
     conn.send("Hello".encode())
     while True:
         data = conn.recv(1024)
-        if(data == b"-" or data == b''):  # Signifies end of encryption sends, terminates the loop
+        if(data == b''):  # Signifies end of encryption sends, terminates the loop
             break
 
         # Generate a fresh IV for each block of data
@@ -115,9 +115,8 @@ def Decryption(addr, conn):
     key = KeyDict[addr][1]
     conn.send("Hello".encode())
     while True:
-        print("Waiting for data")
         data = conn.recv(2048)
-        if(data == b"-" or data == b''):  # Signifies end of decryption sends, terminates the loop
+        if(data == b''):  # Signifies end of decryption sends, terminates the loop
             break
 
         cipher = Cipher(
@@ -146,7 +145,6 @@ def SetAESKey(addr, conn):
 
     key = base64.b64decode(decrypted_key)
     KeyDict[addr][1] = key  # Turns it back into its original tuple and saves it
-    #print(KeyDict[addr])
 
 def RemoveKey(addr):
     KeyDict.pop(addr)

@@ -35,6 +35,8 @@ def client_program():
             if message.startswith('upload'):
                 upload = True
 
+            elif message.startswith('download'):
+                download = True
 
             data = client_socket.recv(1024)  # receive response
         except Exception as e:
@@ -58,7 +60,11 @@ def client_program():
                 continue
 
         elif(download):
-            pass
+            download = False
+            Download(client_socket, message, key)
+            message = ""
+            continue
+
 
         clientData, serverState = plaintext.split('~')
         print(f'Received from server: {clientData}')  # show in terminal
@@ -69,23 +75,6 @@ def client_program():
         else:
             message = ""
 
-
-        if message.startswith('download'):
-            files_name = message.split(' ', 1)[1]
-            try:
-                # Reading file and sending data to server
-                with open(files_name, "xb") as fil:
-                    file_data = client_socket.recv(1024).decode()
-                    if not file_data:  # Stop if no more data
-                        break
-                    fil.write(file_data)
-                client_socket.send("ACK".encode())
-                # File is closed after data is sent
-                print(f"Downloaded: {files_name}")
-
-            except IOError:
-                print('You entered an invalid filename!\
-                Please enter a valid name')
     client_socket.close()  # close the connection
 
 
@@ -121,7 +110,7 @@ def Encrypt(plaintext, key):  # Double encrypt the message being sent
     return iv + ciphertext
 
 
-def Decrypt(ciphertext, key):  # Decrypt only using AES
+def Decrypt(ciphertext, key, isString = True):  # Decrypt only using AES
     iv = ciphertext[:16]
     cipher = Cipher(
         algorithms.AES(key),
@@ -131,11 +120,18 @@ def Decrypt(ciphertext, key):  # Decrypt only using AES
     decryptor = cipher.decryptor()
 
     plaintext = decryptor.update(ciphertext[16:]) + decryptor.finalize()  # Decrypt using AES
-    return plaintext.decode()  # Convert bytes to string after decryption
+
+    if(isString):
+        return plaintext.decode()
+
+    else:   # In the event, we are expecting file bytes
+        return plaintext
+
 
 
 def Upload(conn, message, key):
     file_name = message.split(' ', 1)[1]
+    noACK = 0
     try:
         # Reading file and sending data to server
         with open(file_name, "rb") as fi:
@@ -145,14 +141,52 @@ def Upload(conn, message, key):
                 Ack = Decrypt(conn.recv(1024), key)
                 if (Ack == "ACK"):
                     data = fi.read(1024)
+                else:
+                    noACK += 1
+                    if(noACK == 3):
+                        print("De-synchronized Connection With Server")
+                        return
+
             # File is closed after data is sent
         conn.send(Encrypt("-", key))
+
 
     except FileNotFoundError:
         conn.send(Encrypt("+", key))
         print('You entered an invalid filename!\
         Please enter a valid name')
 
+    except:
+        return
+
+def Download(conn, message, key):
+    files_name = message.split(' ', 1)[1]
+    try:
+        # Reading file and sending data to server
+        with open(files_name, "xb") as fil:
+            conn.send(Encrypt("Download", key))
+            print("Starting Download")
+            while True:
+                file_data = Decrypt(conn.recv(2048), key, False)
+                if file_data == b'-':  # Stop if no more data
+                    conn.send(Encrypt("ACK", key))
+                    return
+                elif file_data == b'+':
+                    raise EOFError
+                fil.write(file_data)
+                conn.send(Encrypt("ACK", key))
+
+    except FileExistsError:
+        print('This File Already Exists!')
+        conn.send(Encrypt('+', key))
+
+    except EOFError:
+        os.remove(files_name)
+        print("Server Request: Cancelling Download")
+
+    except Exception as e:
+        print(e)
+        return
 
 if __name__ == '__main__':
     client_program()
