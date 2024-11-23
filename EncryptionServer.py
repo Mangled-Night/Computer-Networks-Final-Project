@@ -53,6 +53,7 @@ def Thread_Handler(conn):
     conn.settimeout(5)
     try:
         raw_data = conn.recv(1024).decode()
+        print(raw_data)
         addr, request = raw_data.split('-')
 
     except Exception as e:
@@ -60,7 +61,8 @@ def Thread_Handler(conn):
         conn.close()
         return
     else:
-        conn.settimeout(None)
+        pass
+        #conn.settimeout(None)
 
     match (request):
         case "Encrypt":
@@ -79,12 +81,10 @@ def Thread_Handler(conn):
             RemoveKey(addr)
 
     conn.close()
-    #print("Connection has been closed\n")
 
 
 def Encryption(addr, conn):
     key = KeyDict[addr][1]  # Retrieve the key
-    sendIV = False
 
     conn.send("Hello".encode())
     while True:
@@ -107,48 +107,27 @@ def Encryption(addr, conn):
         encrypted_data = encryptor.update(data)
 
         # Send the IV and encrypted data together
-        if(not sendIV):
-            conn.send(iv + encrypted_data)
-            sendIV = True
-        else:
-            conn.send(encrypted_data)
+        conn.send(iv + encrypted_data)
 
 
 
 def Decryption(addr, conn):
     key = KeyDict[addr][1]
-    setIV= False
-    iv = None
-
     conn.send("Hello".encode())
     while True:
+        print("Waiting for data")
         data = conn.recv(2048)
         if(data == b"-" or data == b''):  # Signifies end of decryption sends, terminates the loop
             break
 
-        if(not setIV):
-            iv = data[:16]
-            data = data[16:]
-            setIV = True
-
         cipher = Cipher(
             algorithms.AES(key),
-            modes.CTR(iv),
+            modes.CTR(data[:16]),
             backend=default_backend()
         )
         decryptor = cipher.decryptor()  # Makes an AES decryptor
 
-        # half_decrypt = KeyDict[addr][0][0].decrypt(  # Decrypts the data using the private key
-        #     data,
-        #     padding.OAEP(
-        #         mgf=padding.MGF1(algorithm=hashes.SHA256()),
-        #         algorithm=hashes.SHA256(),
-        #         label=None
-        #     )
-        # )
-
-        decrypted_data = decryptor.update(data) + decryptor.finalize()  # fully decrypts data
-        #print(decrypted_data)
+        decrypted_data = decryptor.update(data[16:]) + decryptor.finalize()  # fully decrypts data
         conn.send(decrypted_data)  # Sends decrypted data to the server
 
 
