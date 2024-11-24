@@ -283,9 +283,9 @@ class ClientHandle:
                     return
             else:
                 break
-
+        
+        key_send = 0
         while True:
-            key_send = 0
             try:
                 Encryption_socket.send(payload)
                 encrypted_payload = Encryption_socket.recv(1024)
@@ -484,8 +484,8 @@ class ClientHandle:
                 self._log.info(f'{self._user} has Downloaded a File')
 
         except FileNotFoundError:  # Could not find the file
+            self._conn.send(self.__MessageEncrypt('+'.encode()))
             self.__SendMessage("Error: Cannot Find File")
-            self._conn.send(self.__MessageEncrypt('+'))
             return
 
         except Exception as e:  # Error occurred during the transfer, stop the transfer
@@ -496,9 +496,9 @@ class ClientHandle:
                 tb = tb.tb_next
 
             self._log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
-
+            
+            self._conn.send(self.__MessageEncrypt('+'.encode()))
             self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Download. Closing the connection")
-            self._conn.send(self.__MessageEncrypt('+'))
             self.__Close()
             return
 
