@@ -57,8 +57,7 @@ class ClientHandle:
 
             self._log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
             self.__Close()
-        finally:
-            pass
+
 
     def __commands(self, command, data):  # Sends commands to their respective helper function
         match command.lower():
@@ -192,11 +191,8 @@ class ClientHandle:
 
         while True:
             try:  # Try to send a message to the client and waits for an ack back from the client
-                start = time.time()
                 self._conn.send(self.__MessageEncrypt(message.encode()))
                 ack = self.__ReciveMessage()
-                end = time.time()
-                #print(f"Elapsed time: {end - start} seconds")
             except socket.timeout:  # If timeout, increment the counter and resend
                 timeout_counter += 1
                 if (timeout_counter == 3):  # Timeout 3 times or noACK 5 times, presume unstable or dropped connection
@@ -381,9 +377,7 @@ class ClientHandle:
             else:
                 break
 
-
         self._conn.settimeout(5)
-
         try:
             with open(file, 'xb') as f:  # Read it in binary mode and attempt to create a file
                 while True:

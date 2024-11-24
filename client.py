@@ -13,11 +13,6 @@ import base64
 def client_program():
     upload = download = connected = False
 
-    host = socket.gethostname()  # as both code is running on same pc
-    print(host)
-    port = 5000  # socket server port number
-    #client_socket.connect((host, port))  # connect to the server
-
     command = ''
     while command.lower().strip() != "bye":
         while not connected and command.lower().strip() != "bye":
@@ -87,9 +82,10 @@ def client_program():
 
                 elif(download):
                     download = False
-                    Download(client_socket, message, key)
-                    message = ""
-                    continue
+                    if(plaintext == "Download"):
+                        Download(client_socket, message, key)
+                        message = ""
+                        continue
 
 
                 clientData, serverState = plaintext.split('~')

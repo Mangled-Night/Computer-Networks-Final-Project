@@ -90,7 +90,6 @@ def Thread_Handler(conn):
         return
     else:
         pass
-        #conn.settimeout(None)
 
     try:
         match (request):
