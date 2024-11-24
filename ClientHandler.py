@@ -25,17 +25,17 @@ class ClientHandle:
     # Main loop to handle client requests
     def handle_client(self):
         self._log.info("Connection from: " + str(self._addr))
-        self._conn.send(self.__GetRSAKey())  # Sends the public key to the client
-        self.__ReturnAESKey(self._conn.recv(1024))
-
         try:
+            self._conn.send(self.__GetRSAKey())  # Sends the public key to the client
+            self.__ReturnAESKey(self._conn.recv(1024))
+
             if (not self.__Authenticate()):  # Failed Authentication Denies Access To Server Commands
                 self._log.info(f'{self._addr} failed to authenticate')
                 self.__Close()
                 return
 
             while True:
-                self.__SendMessage("Enter a command", 0)
+                self.__SendMessage("Enter help for a list of commands. Enter a command: ", 0)
                 data = self.__ReciveMessage()
                 if (not data):
                     # If data is not received, close the connection
@@ -49,7 +49,13 @@ class ClientHandle:
         except OSError:
             pass
         except Exception as e:
-            self._log.error(f"Internal Server Error. Closing Connection: {e}")
+            tb = e.__traceback__
+            lines = []
+            while tb is not None:
+                lines.append(tb.tb_lineno)
+                tb = tb.tb_next
+
+            self._log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
             self.__Close()
         finally:
             pass
@@ -82,13 +88,18 @@ class ClientHandle:
             case "subfolder":
                 # "Clients can create or folders in the server’s file storage path"
                 self.__SubDir(data)
+
             case 'end':
                 self._log.info(f"{self._user} is ending the connection")
                 self.__Close()
+
+            case 'help':
+                self.__Help()
+
             case _:
                 self.__SendMessage("I did not understand that command, please try again")
 
-    # Authentication/Account Creation
+# Authentication/Account Creation
     def __Authenticate(self):  # Client Authentication Preformed Here
         self.__SendMessage("Welcome to the Computer Networks Server! If you are a new user, press 0. "
                            "If you already have a username, press 1", 0)
@@ -172,7 +183,7 @@ class ClientHandle:
         self.__SendMessage(message, 0)
         return False
 
-    # General Methods
+# General Methods
     def __SendMessage(self, message, state=1):  # Send all messages to the client here
         timeout_counter = 0
         noACK = 0
@@ -215,9 +226,19 @@ class ClientHandle:
 
     def __GetRSAKey(self):  # Sends a request for Encryption Keys
         Encryption_socket = socket.socket()
-        Encryption_socket.connect(self._RSAServer)  # connect to the Encryption server
-        Encryption_socket.send((str(self._addr) + f'-RSA').encode())  # Sends a Request for RSA keys
-        return Encryption_socket.recv(1024)
+        Encryption_socket.settimeout(5)
+
+        try:
+            Encryption_socket.connect(self._RSAServer)  # connect to the Encryption server
+            Encryption_socket.send((str(self._addr) + f'-RSA').encode())  # Sends a Request for RSA keys
+            key = Encryption_socket.recv(1024)
+
+        except ConnectionRefusedError or socket.timeout:
+            self._log.critical("Cannot Communicate to the Encryption Server")
+            self.__Close()
+
+        else:
+            return key
 
     def __ReturnAESKey(self, key):
         Encryption_socket = socket.socket()
@@ -315,7 +336,7 @@ class ClientHandle:
 
         return decrypted_payload
 
-    # Other Functions
+# Other Functions
     def __Close(self):  # Connection Was Closed, delete this object
         self._conn.close()
         del self
@@ -394,7 +415,14 @@ class ClientHandle:
             os.remove(file)
 
         except Exception as e:  # Error occurred during the transfer, remove the partially uploaded file
-            self._log.warning(e)
+            tb = e.__traceback__
+            lines = []
+            while tb is not None:
+                lines.append(tb.tb_lineno)
+                tb = tb.tb_next
+
+            self._log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
+
             os.remove(file)
             Encryption_socket.settimeout(None)
             self._conn.settimeout(None)
@@ -461,7 +489,14 @@ class ClientHandle:
             return
 
         except Exception as e:  # Error occurred during the transfer, stop the transfer
-            self._log.warning(e)
+            tb = e.__traceback__
+            lines = []
+            while tb is not None:
+                lines.append(tb.tb_lineno)
+                tb = tb.tb_next
+
+            self._log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
+
             self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Download. Closing the connection")
             self._conn.send(self.__MessageEncrypt('+'))
             self.__Close()
@@ -472,7 +507,7 @@ class ClientHandle:
         for file in os.listdir(self._dir):
             if (not '.' in file):
                 file = '.' + file
-            Directory += '\n' + str(file)
+            Directory += '\n\t' + str(file)
         self.__SendMessage(Directory)
         self.__SendMessage("End of Directory")
 
@@ -552,3 +587,41 @@ class ClientHandle:
             self._dir = os.path.join(self._dir, target)
             self._dirDepth += 1
             self.__SendMessage(f"Currently in {self._dir}")
+
+    def __Help(self):
+        self.__SendMessage("Here's a list of available commands")
+        i = 0
+        while True:
+            match i:
+                case 0:
+                    self.__SendMessage("Upload [filename]"
+                                       "\n\tUploads The Specified File to The Server")
+
+                case 1:
+                    self.__SendMessage("Download [filename]"
+                                       "\n\tDownloads The Specified File From The Server")
+
+                case 2:
+                    self.__SendMessage("Delete [filename]"
+                                       "\n\tDeletes The specified File From The Server")
+
+                case 3:
+                    self.__SendMessage("Dir"
+                                       "\n\tShows all Files and Directories Within The Current Directory")
+                case 4:
+                    self.__SendMessage("CD [.. | folder name]"
+                                       "\n\tChanges the Current Directory"
+                                       "\n\t[..] Climbs Up the Directory Tree To Root Directory"
+                                       "\n\t[folder name] Specify a Folder to Change Into")
+                case 5:
+                    self.__SendMessage("Subfolder [create | delete] [folder name]"
+                                       "\n\tModify The Current Directory"
+                                       "\n\t[create] Creates The Folder Within The Current Directory"
+                                       "\n\t[delete] Deletes The Specified Folder Within The Current Directory")
+                case 6:
+                    self.__SendMessage("End"
+                                       "\n\tCloses The Connection With The Server")
+                case _:
+                    break
+
+            i += 1

@@ -11,72 +11,103 @@ import base64
 
 
 def client_program():
-    states = ['Listening', 'Sending', "ACK"]
-    message = ''  # take input
-    upload = download = False
+    upload = download = connected = False
 
     host = socket.gethostname()  # as both code is running on same pc
+    print(host)
     port = 5000  # socket server port number
-    client_socket = socket.socket()  # instantiate
-    client_socket.connect((host, port))  # connect to the server
+    #client_socket.connect((host, port))  # connect to the server
 
-    # Key Exchange for Encryption Handshake
-    key = urandom(32)
-    data = client_socket.recv(1024)
-    public_key = serialization.load_pem_public_key(data)
-    SendKeys(client_socket, public_key, key)
+    command = ''
+    while command.lower().strip() != "bye":
+        while not connected and command.lower().strip() != "bye":
+            command = input("Enter bye to leave or Help for help. Connect: ")
 
-    while message.lower().strip() != 'bye':
-        try:
-            if (message != ""):
-                ciphermessage = Encrypt(message, key)
-                client_socket.send(ciphermessage)  # send message
-
-            if message.startswith('upload'):
-                upload = True
-
-            elif message.startswith('download'):
-                download = True
-
-            data = client_socket.recv(1024)  # receive response
-        except Exception as e:
-            print(e)
-            client_socket.close()
-            print("Connection does not exist")
-            return
-
-        if (len(data) <= 16):
-            client_socket.close()
-            print("Connection has been terminated")
-            return
-
-        plaintext = Decrypt(data, key)
-
-        if(upload):
-            upload = False
-            if (plaintext == "Upload"):
-                Upload(client_socket, message, key)
-                message = ""
+            if(command.lower() == "help"):
+                print("Please Enter in this format: [Host/IP] [Port]")
                 continue
+            elif(command.lower() == "bye"):
+                continue
+            else:
+                host, _, port = command.partition(" ")
 
-        elif(download):
-            download = False
-            Download(client_socket, message, key)
-            message = ""
-            continue
+            try:
+                client_socket = socket.socket()  # instantiate
+                client_socket.connect((host, int(port)))
+            except ConnectionRefusedError:
+                print("The host of the IP/Port is not running/accepting connections")
+            except socket.gaierror:
+                print("Could not resolve hostname to an IP")
+            except socket.timeout:
+                print(" Could not Connect to the Server within allocated time")
+            except Exception as e:
+                print(e)
+                print("Please Enter Using the Correct Format. Type Help for help")
+            else:
+                connected = True
 
 
-        clientData, serverState = plaintext.split('~')
-        print(f'Received from server: {clientData}')  # show in terminal
-        client_socket.send(Encrypt("ACK", key))
 
-        if (serverState == states[0]):
-            message = input(" -> ")  # again take input
-        else:
-            message = ""
+        if (connected):
+            key = OnConnect(client_socket)
+            message = ''  # take input
 
-    client_socket.send(Encrypt("End", key))
-    client_socket.close()  # close the connection
+            while message.lower().strip() != 'end':
+                try:
+                    if (message != ""):
+                        ciphermessage = Encrypt(message, key)
+                        client_socket.send(ciphermessage)  # send message
+
+                    if message.startswith('upload'):
+                        upload = True
+
+                    elif message.startswith('download'):
+                        download = True
+
+                    data = client_socket.recv(1024)  # receive response
+                except Exception as e:
+                    print(e)
+                    client_socket.close()
+                    print("Connection does not exist")
+                    break
+
+                if (len(data) <= 16):
+                    client_socket.close()
+                    print("Connection has been terminated")
+                    break
+
+                plaintext = Decrypt(data, key)
+
+                if(upload):
+                    upload = False
+                    if (plaintext == "Upload"):
+                        Upload(client_socket, message, key)
+                        message = ""
+                        continue
+
+                elif(download):
+                    download = False
+                    Download(client_socket, message, key)
+                    message = ""
+                    continue
+
+
+                clientData, serverState = plaintext.split('~')
+                print(f'Received from server: {clientData}')  # show in terminal
+                client_socket.send(Encrypt("ACK", key))
+
+                if (serverState == "Listening"):
+                    message = input(" -> ")  # again take input
+                else:
+                    message = ""
+
+            try:
+                client_socket.send(Encrypt("End", key))
+            except:
+                pass
+
+            client_socket.close()  # close the connection
+            connected = False
 
 
 def SendKeys(conn, public_key, AES_key):
@@ -187,6 +218,21 @@ def Download(conn, message, key):
 
     except Exception as e:
         print(e)
+        return
+
+
+def OnConnect(conn):
+    try:
+        # Key Exchange for Encryption Handshake
+        key = urandom(32)
+        data = conn.recv(1024)
+        public_key = serialization.load_pem_public_key(data)
+        SendKeys(conn, public_key, key)
+
+        return key
+
+    except:
+        print("An Error Occurred While Setting Up Connection")
         return
 
 if __name__ == '__main__':

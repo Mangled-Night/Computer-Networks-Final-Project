@@ -129,6 +129,9 @@ def server_command(request, users):
         case "kill":
             KillConnection(users, target)
 
+        case "help":
+            Help()
+
 
 def KillConnection(users, target):
 
@@ -163,8 +166,17 @@ def Shutdown(q, u, command):
     q.put("StopAllConnections")
 
 
+def Help():
+    print("refresh: Refreshes The List Of Connected Users"
+          "\nusers: Display All Connected User's Port and IP"
+          "\nkill: [-a | UserID]: Kills a User's Connection"
+          "\n\t[-a] All Connected Users Are Terminated"
+          "\n\t[UserID] Terminates the Specified User"
+          "\nshutdown [-f]: Shuts Down The Server. Waits for all Connected Users To Close Their Connections"
+          "\n\t[-f]: Forcefully Shuts Down The Server. All Connected Users Will Be Disconnected")
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     server_program()
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/

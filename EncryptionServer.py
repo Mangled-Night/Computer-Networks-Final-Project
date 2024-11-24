@@ -9,23 +9,43 @@ import threading
 import base64
 from os import urandom
 import logging
+import queue
 
 KeyDict = dict([])
 def EncryptionServer():
     port = 4000  # Port to bind the server
     host = socket.gethostname()
+    Q = queue.Queue()
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((host, port))
     server_socket.listen(1)
+    server_socket.setblocking(False)
     print("Server is listening on port", port)
 
-    while True:
-        conn, addr = server_socket.accept()
-        print("Connection from: " + str(addr))
+    # Input thread for server console, ensures when calling input it does not lock up the main thread
+    input_thread = threading.Thread(target=Console, args=((Q,)))
+    input_thread.start()
 
-        handler = threading.Thread(target=Thread_Handler, args=(conn,))
-        handler.start()
+    while True:
+
+        try:
+            conn, address = server_socket.accept()
+            conn.setblocking(True)
+        except BlockingIOError:
+            if (not Q.empty()):
+                print("Shutting Down the Server")
+                break
+        else:
+            handler = threading.Thread(target=Thread_Handler, args=(conn,))
+            handler.start()
+
+def Console(Q):
+    command = ""
+    while not command.lower().startswith('shutdown'):
+        command = input("server/ ")
+
+    Q.put("StopAllConnections")
 
 
 def RSAKeyGeneration(addr):  # Generates RSA Keys for the Server/Client Connection
@@ -56,11 +76,16 @@ def Thread_Handler(conn):
 
     try:
         raw_data = conn.recv(1024).decode()
-        print(raw_data)
         addr, request = raw_data.split('-')
 
     except Exception as e:
-        print(e)
+        tb = e.__traceback__
+        lines = []
+        while tb is not None:
+            lines.append(tb.tb_lineno)
+            tb = tb.tb_next
+
+        log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
         conn.close()
         return
     else:
@@ -84,7 +109,13 @@ def Thread_Handler(conn):
             case "Remove":
                 RemoveKey(addr)
     except Exception as e:
-        log.error(e)
+        tb = e.__traceback__
+        lines = []
+        while tb is not None:
+            lines.append(tb.tb_lineno)
+            tb = tb.tb_next
+
+        log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
 
     conn.close()
 
