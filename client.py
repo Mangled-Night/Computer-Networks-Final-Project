@@ -75,6 +75,7 @@ def client_program():
         else:
             message = ""
 
+    client_socket.send(Encrypt("End", key))
     client_socket.close()  # close the connection
 
 

@@ -3,6 +3,7 @@ import os
 import socket
 import shutil
 import time
+import logging
 
 class ClientHandle:
     # Static Variables for all client threads to use
@@ -10,6 +11,7 @@ class ClientHandle:
     _Lock = threading.Lock()
     _states = ['Listening', 'Sending']
     _RSAServer = None
+    _log = logging.getLogger("Main")
 
     # initialize and define local variables and set up secure connection
     def __init__(self, connection, address):
@@ -22,12 +24,13 @@ class ClientHandle:
 
     # Main loop to handle client requests
     def handle_client(self):
-        print("Connection from: " + str(self._addr))
+        self._log.info("Connection from: " + str(self._addr))
         self._conn.send(self.__GetRSAKey())  # Sends the public key to the client
         self.__ReturnAESKey(self._conn.recv(1024))
 
         try:
             if (not self.__Authenticate()):  # Failed Authentication Denies Access To Server Commands
+                self._log.info(f'{self._addr} failed to authenticate')
                 self.__Close()
                 return
 
@@ -40,15 +43,13 @@ class ClientHandle:
                 command, _, request = data.partition(" ")
                 self.__commands(command, request)
 
-            self.__Close()
         except ConnectionResetError or socket.error:  # Runs when client terminates the connection
-            print("Connection Terminated By Host")
+            self._log.warning("Connection Terminated By Host")
             self.__Close()
         except OSError:
             pass
         except Exception as e:
-            print(e)
-            print("Internal Server Error. Closing Connection")
+            self._log.error(f"Internal Server Error. Closing Connection: {e}")
             self.__Close()
         finally:
             pass
@@ -81,6 +82,9 @@ class ClientHandle:
             case "subfolder":
                 # "Clients can create or folders in the server’s file storage path"
                 self.__SubDir(data)
+            case 'end':
+                self._log.info(f"{self._user} is ending the connection")
+                self.__Close()
             case _:
                 self.__SendMessage("I did not understand that command, please try again")
 
@@ -114,6 +118,7 @@ class ClientHandle:
                         if (self.__FetchPass(data)):  # Tries to see if password matches the password associated
                             # with that user
                             self.__SendMessage("Authentication Complete. Welcome " + self._user)
+                            self._log.info(f"{self._user} has Authenticated in")
                             self._dir = os.path.join(os.getcwd(), self._user)
                             return True
 
@@ -145,7 +150,8 @@ class ClientHandle:
 
                     if (data == 'y'):
                         self._UserDict[user] = passcode  # Adds username and password to dictionary
-                        os.mkdir(user)  # Makes a directory for that user within the Server
+                        os.mkdir(user) # Makes a directory for that user within the Server
+                        self._log.info("A new User Account Has Been Created")
                         return
 
     def __FetchUser(self, username):  # Gets a username from the dictionary
@@ -179,11 +185,11 @@ class ClientHandle:
                 self._conn.send(self.__MessageEncrypt(message.encode()))
                 ack = self.__ReciveMessage()
                 end = time.time()
-                print(f"Elapsed time: {end - start} seconds")
+                #print(f"Elapsed time: {end - start} seconds")
             except socket.timeout:  # If timeout, increment the counter and resend
                 timeout_counter += 1
                 if (timeout_counter == 3):  # Timeout 3 times or noACK 5 times, presume unstable or dropped connection
-                    print("Connection with host is unstable or terminated")
+                    self._log.warning("Connection with host is unstable or terminated")
                     self.__Close()
                     break
             else:
@@ -192,13 +198,14 @@ class ClientHandle:
                     break
                 noACK += 1  # Increment the number of times we didn't get an ACK
                 if (noACK == 5):
-                    print("Connection with host is unstable or terminated")
+                    self._log.warning("Connection with host is unstable or terminated")
                     self.__Close()
                     break
 
     def __ReciveMessage(self):  # Reccive all messages from the client here
         data = self._conn.recv(1024)
         if (data == b''):
+            self._log.warining(f"Connection with {self._user} has been dropped")
             self.__Close()
             return None
         return self.__MessageDecrypt(data).decode()
@@ -209,18 +216,14 @@ class ClientHandle:
     def __GetRSAKey(self):  # Sends a request for Encryption Keys
         Encryption_socket = socket.socket()
         Encryption_socket.connect(self._RSAServer)  # connect to the Encryption server
-        Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
-
-        # Recieve and Return the Public Key
-        Encryption_socket.send("RSA".encode())
+        Encryption_socket.send((str(self._addr) + f'-RSA').encode())  # Sends a Request for RSA keys
         return Encryption_socket.recv(1024)
 
     def __ReturnAESKey(self, key):
         Encryption_socket = socket.socket()
         Encryption_socket.connect(self._RSAServer)  # connect to the Encryption server
-        Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
+        Encryption_socket.send((str(self._addr) + f'-AES').encode())  # Sends a Request to hold AES keys
 
-        Encryption_socket.send("AES".encode())
         Encryption_socket.recv(1024)  # Confirmation, ready for payload
         key_send = 0
         Encryption_socket.settimeout(5)
@@ -232,7 +235,7 @@ class ClientHandle:
             except:
                 key_send += 1
                 if (key_send == 4):
-                    print("Cannot Communicate to the Encryption Server")
+                    self._log.critical("Cannot Communicate to the Encryption Server")
                     self.__Close()
             else:
                 Encryption_socket.settimeout(None)
@@ -247,16 +250,13 @@ class ClientHandle:
 
         while True:
             try:
-                Encryption_socket.send(
-                    (str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption
-                # Server
-                # Requests RSA Encryption for a message
-                Encryption_socket.send("Encrypt".encode())
+                Encryption_socket.send((str(self._addr) + f'-Encrypt').encode())  # Sends an Encryption Request
+
                 Encryption_socket.recv(1024)  # Confirmation, ready for payload
             except:
                 sends += 1
                 if (sends == 3):
-                    print("Cannot Communicate to the Encryption Server")
+                    self._log.critical("Cannot Communicate to the Encryption Server")
                     Encryption_socket.close()
                     self.__Close()
                     return
@@ -271,7 +271,7 @@ class ClientHandle:
             except:
                 key_send += 1
                 if (key_send == 3):
-                    print("Cannot Communicate to the Encryption Server")
+                    self._log.critical("Cannot Communicate to the Encryption Server")
                     self.__Close()
                     return
             else:
@@ -288,14 +288,12 @@ class ClientHandle:
         sends = 0
         Encryption_socket.settimeout(5)
         try:
-            Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends socket info to the Encryption Server
-            # Requests RSA Encryption for a message
-            Encryption_socket.send("Decrypt".encode())
+            Encryption_socket.send((str(self._addr) + f'-Decrypt').encode())  # Sends a Decryption Request
             Encryption_socket.recv(1024)  # Confirmation, ready for payload
         except:
             sends += 1
             if (sends == 3):
-                print("Cannot Communicate to the Encryption Server")
+                self._log.critical("Cannot Communicate to the Encryption Server")
                 Encryption_socket.close()
                 self.__Close()
                 return
@@ -308,7 +306,7 @@ class ClientHandle:
             except:
                 key_send += 1
                 if (key_send == 4):
-                    print("Cannot Communicate to the Encryption Server")
+                    self._log.critical("Cannot Communicate to the Encryption Server")
                     self.__Close()
             else:
                 Encryption_socket.send(b'')
@@ -320,7 +318,6 @@ class ClientHandle:
     # Other Functions
     def __Close(self):  # Connection Was Closed, delete this object
         self._conn.close()
-        self.WriteUserData()
         del self
 
     @classmethod
@@ -357,7 +354,7 @@ class ClientHandle:
             except:
                 EncryptTimeout += 1
                 if (EncryptTimeout == 3):
-                    print("Cannot Communicate to the Encryption Server")
+                    self._log.critical("Cannot Communicate to the Encryption Server")
                     self.__Close()
                     return
             else:
@@ -374,6 +371,7 @@ class ClientHandle:
                     file_data = Encryption_socket.recv(2048)
                     if file_data == b'-':  # Stop if no more data
                         self.__SendMessage("File Upload Complete!")
+                        self._log.info(f'{self._user} Uploaded a File')
                         Encryption_socket.send("-".encode())
                         Encryption_socket.settimeout(None)
                         self._conn.settimeout(None)
@@ -396,7 +394,7 @@ class ClientHandle:
             os.remove(file)
 
         except Exception as e:  # Error occurred during the transfer, remove the partially uploaded file
-            print(e)
+            self._log.warning(e)
             os.remove(file)
             Encryption_socket.settimeout(None)
             self._conn.settimeout(None)
@@ -404,8 +402,6 @@ class ClientHandle:
             self.__Close()
             return
 
-
-    # TODO Test the Download Function. Need Client to Have Function
     def __Download(self, file):  # Client downloading a file from the server
         # Either Receive File Name or Path. Download from current directory
         file = os.path.join(self._dir, file)
@@ -426,7 +422,7 @@ class ClientHandle:
             except:
                 EncryptTimeout += 1
                 if (EncryptTimeout == 3):
-                    print("Cannot Communicate to the Encryption Server")
+                    self._log.critical("Cannot Communicate to the Encryption Server")
                     self.__Close()
                     return
             else:
@@ -437,7 +433,6 @@ class ClientHandle:
         confirm = self.__ReciveMessage()
         if(confirm == '+'):
             return
-        print("Starting Download")
 
         try:
             with open(file, 'rb') as f:  # Read the file in binary mode, no need to encode it
@@ -450,7 +445,7 @@ class ClientHandle:
                     if(Ack != "ACK"):
                         noACK += 1
                         if(noACK == 3):
-                            print("De-synchronized Connection With Host")
+                            self._log.warning("De-synchronized Connection With Host")
                             return
                     else:
                         file_data = f.read(1024)
@@ -458,13 +453,15 @@ class ClientHandle:
                 self._conn.send(self.__MessageEncrypt("-".encode()))
                 self.__ReciveMessage()
                 self.__SendMessage("File Download Complete!")
+                self._log.info(f'{self._user} has Downloaded a File')
 
         except FileNotFoundError:  # Could not find the file
             self.__SendMessage("Error: Cannot Find File")
             self._conn.send(self.__MessageEncrypt('+'))
             return
 
-        except:  # Error occurred during the transfer, stop the transfer
+        except Exception as e:  # Error occurred during the transfer, stop the transfer
+            self._log.warning(e)
             self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Download. Closing the connection")
             self._conn.send(self.__MessageEncrypt('+'))
             self.__Close()
@@ -495,6 +492,7 @@ class ClientHandle:
             if (confirmation == 'y'):  # Deletes the file
                 os.remove(file_path)
                 self.__SendMessage(f"{file} Has Been Removed")
+                self._log.info(f'{self._user} has Deleted a File')
 
     def __SubDir(self, subcommand):  # Creates or deletes a subdirectory
         # Assumes we are given the name
@@ -510,6 +508,7 @@ class ClientHandle:
                 try:
                     os.mkdir(file_path)  # Try to make that Directory
                     self.__SendMessage(f"Directory {target} created.")
+                    self._log.info(f'{self._user} has Created a Folder')
                 except:  # Some OS are case-sensitive and some aren't, so it may or may not throw an error
                     self.__SendMessage(f"Error: Directory {target} already exists.")
             else:
@@ -528,6 +527,7 @@ class ClientHandle:
                 if (confirmation == 'y'):  # Deletes the directory
                     shutil.rmtree(file_path)
                     self.__SendMessage(f"{target} Has Been Removed")
+                    self._log.info(f'{self._user} has Deleted a Folder')
 
         else:
             self.__SendMessage("Error: I did not understand that command. Either create or delete a subdirectory")

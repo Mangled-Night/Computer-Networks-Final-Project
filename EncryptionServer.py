@@ -8,6 +8,7 @@ from cryptography.hazmat.backends import default_backend
 import threading
 import base64
 from os import urandom
+import logging
 
 KeyDict = dict([])
 def EncryptionServer():
@@ -51,6 +52,8 @@ def RSAKeyGeneration(addr):  # Generates RSA Keys for the Server/Client Connecti
 
 def Thread_Handler(conn):
     conn.settimeout(5)
+    log = logging.getLogger("Encrypt")
+
     try:
         raw_data = conn.recv(1024).decode()
         print(raw_data)
@@ -64,21 +67,24 @@ def Thread_Handler(conn):
         pass
         #conn.settimeout(None)
 
-    match (request):
-        case "Encrypt":
-            Encryption(addr, conn)
+    try:
+        match (request):
+            case "Encrypt":
+                Encryption(addr, conn)
 
-        case "Decrypt":
-            Decryption(addr, conn)
+            case "Decrypt":
+                Decryption(addr, conn)
 
-        case "RSA":
-            conn.send(RSAKeyGeneration(addr))
+            case "RSA":
+                conn.send(RSAKeyGeneration(addr))
 
-        case "AES":
-            SetAESKey(addr, conn)
+            case "AES":
+                SetAESKey(addr, conn)
 
-        case "Remove":
-            RemoveKey(addr)
+            case "Remove":
+                RemoveKey(addr)
+    except Exception as e:
+        log.error(e)
 
     conn.close()
 
