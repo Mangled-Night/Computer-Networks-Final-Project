@@ -368,17 +368,34 @@ class ClientHandle:
 
         self._conn.settimeout(5)
 
-        try:
+               try:
             with open(file, 'xb') as f:  # Read it in binary mode and attempt to create a file
                 while True:
                     encryptedBytes = self._conn.recv(2048)
                     Encryption_socket.send(encryptedBytes)
                     file_data = Encryption_socket.recv(2048)
                     if file_data == b'-':  # Stop if no more data
+# --------------------------------------------------------------------------------------------------------------#
+                        elapsed_time = time.time() - start_time  # Calculate total time taken
+                        file_size_MB = total_received / (1024 * 1024)  # Convert bytes to MB
+                        data_rate_MBps = file_size_MB / elapsed_time if elapsed_time > 0 else 0
+# --------------------------------------------------------------------------------------------------------------#
                         self.__SendMessage("File Upload Complete!")
                         Encryption_socket.send("-".encode())
                         Encryption_socket.settimeout(None)
                         self._conn.settimeout(None)
+#--------------------------------------------------------------------------------------------------------------#
+                        # Record the stats
+                        AnalysisModule.record_stats(
+                            operation_type="upload",
+                            file_size_MB=file_size_MB,
+                            transfer_time_s=elapsed_time,
+                            data_rate_MBps=data_rate_MBps,
+                            response_time_s=elapsed_time)
+
+                        # Save the stats to a CSV file
+                        AnalysisModule.save_stats_to_csv()
+# --------------------------------------------------------------------------------------------------------------#
                         break
                     elif file_data == b'+': # Cancels the upload process
                         self.__SendMessage("User Request: File Upload Cancelled")
@@ -387,6 +404,9 @@ class ClientHandle:
                         self._conn.settimeout(None)
                         raise EOFError
                     f.write(file_data)
+# --------------------------------------------------------------------------------------------------------------#
+                    total_received += len(file_data)
+# --------------------------------------------------------------------------------------------------------------#
                     self._conn.send(self.__MessageEncrypt("ACK".encode()))
         except FileExistsError:  # Duplicate Files cannot exist on the server
             self.__SendMessage("Error: This File Already Exists")
