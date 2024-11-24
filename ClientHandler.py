@@ -479,6 +479,9 @@ class ClientHandle:
                     transfer_time_s = elapsed_time,
                     data_rate_MBps = data_rate_MBps,
                     response_time_s = elapsed_time)
+                
+        # Save the stats to a CSV file
+        AnalysisModule.save_stats_to_csv()
 # ------------------------------------------------------------------------------------------------------------#
         except FileNotFoundError:  # Could not find the file
             self.__SendMessage("Error: Cannot Find File")
