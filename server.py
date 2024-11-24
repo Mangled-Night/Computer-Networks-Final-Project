@@ -1,75 +1,166 @@
+import select
 import socket
 import threading
-
-def client_commands(conn, address): # used to connect to a single client
-        print("Connection from: ", str(address)) # tells who is connecting (Ip address)
-        while True:
-            data = conn.recv(1024).decode() # limits amound of data by 1kb
-            if not data: # if no data then break
-                break
-            print("Response from:", str(data))
-            data = ' : ' + commands(data)
-            conn.send(data.encode()) # send data
-
-        conn.close()
-        print("Connection closed")
+from ClientHandler import ClientHandle
+import ast
+import queue
+import logging
 
 
 def server_program():
-    # get the hostname
     host = socket.gethostname()
-    port = 5000  # initiate port no above 1024
+    port = 5000  # Port to bind the server
+    Q = queue.Queue()
+    usersQ = queue.Queue()
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((host, port))
+    server_socket.listen(4)
+    server_socket.setblocking(False)
+    print("Server is listening on port", port)
 
-    server_socket = socket.socket()  # get instance
-    # look closely. The bind() function takes tuple as argument
-    server_socket.bind((host, port))  # bind host address and port together
+    # Input thread for server console, ensures when calling input it does not lock up the main thread
+    input_thread = threading.Thread(target=Console, args=(Q, usersQ,))
+    input_thread.start()
 
-    # configure how many client the server can listen simultaneously
-    server_socket.listen(2)
-    print(f"Server started on {host}:{port}") # added to let us know the server has started up
+    logging.basicConfig(
+        filename="my_log_file.log",
+        filemode="a",
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+
+    try:
+        open("Users.txt", 'x')
+    except FileExistsError:
+        pass
+
+    with open("Users.txt", 'r') as file:
+        data = file.read()
+
+        if data.strip():    # If the file is not empty, grab all users from the file
+            ClientHandle.SetUserDict(ast.literal_eval(data))
+
+        else:   # If empty, set as an empty dictionary
+            ClientHandle.SetUserDict(dict([]))
+
+    ClientHandle.SetRSA((host, 4000))
+
 
     while True:
-        conn, address = server_socket.accept()
-        # used to create a thread for every new client
-        client_thread = threading.Thread(target=client_commands, args=(conn, address))
-        client_thread.start()
+        # Accept new connection
+        try:
+            conn, address = server_socket.accept()
+            conn.setblocking(True)
+        except BlockingIOError:
+            if(not Q.empty()):
+                print("Shutting Down the Server")
+                ClientHandle.WriteUserData()
+                break
+        else:
+            # Start a new thread to handle each client
+            client_thread = threading.Thread(target=ClientHandle(conn, address).handle_client)
+            client_thread.start()
+            usersQ.put(conn)
 
-    #conn, address = server_socket.accept()  # accept new connection
-    #print("Connection from: " + str(address))
-    #while True:
-        # receive data stream. it won't accept data packet greater than 1024 bytes
-        #data = conn.recv(1024).decode()
-        #if not data:
-            # if data is not received break
-            #break
-        #print("from connected user: " + str(data))
-        #data = ' -> ' + commands(data)
-        #conn.send(data.encode())  # send data to the client
 
-    #conn.close()  # close the connection
 
-def commands(request):
-    match request:
-        case "Connect":
-            return "Initiates connection from client to server with the specified files"
+# Function for input thread to use
+def Console(Q, uQ):
+    command = ""
+    users = []
+    while not command.lower().startswith('shutdown'):
+        print("\tGetting all users...")
+        # Remove all dead connections
+        if(len(users)):
+            rAlive, wAlive, _ = select.select(users, users, [])
+            alive = list(set(rAlive + wAlive))
+            users = alive
 
-        case "Upload":
-            return "Clients can upload files to the server. Server will prompt client if file already exists and requires user input to be overwritten"
+        # Add new users to the users list
+        while not uQ.empty(): # Adds all connected users into this list
+            users.append(uQ.get())
 
-        case "Download":
-            return "Clients can download files from the server. Server will respond with error message if file does not exist."
+        print("\tAll users added")
+        command = input("server/ ")
+        server_command(command, users)
 
-        case "Delete":
-            return "Clients can delete files from the server. Server will respond with error message if file is currently being processed or does not exist."
+    Shutdown(Q, users, command)
 
-        case "Dir":
-            return "Clients can view a list of files and subdirectories in the server’s file storage path."
 
-        case "Subfolder":
-            return "Clients can create or subfolders in the server’s file storage path"
 
-        case _:
-            return "I did not understand that command, please try again"
+def server_command(request, users):
+    command, _, target = request.partition(" ")
+    target = target.strip()
+
+    match command.lower():
+        case "users":
+            if(not len(users)):
+                print("\tNo Connected Users")
+                return
+
+            stop = None
+            if(target == ""):
+                stop = 9999
+            else:
+                try:
+                    stop = int(target)
+                    if (stop < 1):
+                        print("\tStop parameter must be greater than 1")
+                        return
+
+                except ValueError:
+                    print("\tStop parameter must be an integer")
+                    return
+
+            print(f'\t[ID]- Address: xxx-xxx-xxx-xxx  Port: xxxx')
+            i = 0
+            for conn in users:
+                addr, port = conn.getpeername()
+                print(f'\t[{i}]- Address: {addr}  Port: {port}')
+                i += 1
+
+                if(i > stop):
+                    break
+
+        case "refresh":
+            return
+
+        case "kill":
+            KillConnection(users, target)
+
+
+def KillConnection(users, target):
+
+    if(target == '-a'):
+        for conn in users:
+            conn.close()
+
+        users.clear()
+        print("\tAll User Connections Has Been Terminated")
+        return
+
+    try:
+        target = int(target)
+
+    except ValueError:
+        print("Pass the user-ID")
+
+    if(int(target) > len(users)-1):
+        print("\tNo valid target")
+        return
+
+    users[target].close()
+    users.pop(target)
+    print("\tUser Connection Has been Terminated")
+
+def Shutdown(q, u, command):
+
+    command, _, flag = command.partition(" ")
+    if(flag == "-f"):
+        KillConnection(u, '-a')
+
+    q.put("StopAllConnections")
 
 
 # Press the green button in the gutter to run the script.
