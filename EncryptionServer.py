@@ -17,6 +17,14 @@ def EncryptionServer():
     host = socket.gethostname()
     Q = queue.Queue()
 
+    # Configure logging
+    logging.basicConfig(
+        level=logging.DEBUG,  # Set the minimum logging level
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("my_log_file.log")  # Write logs to a file
+    ])
+
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((host, port))
     server_socket.listen(1)
@@ -115,16 +123,18 @@ def Thread_Handler(conn):
             tb = tb.tb_next
 
         log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
-
-    conn.close()
+    finally:
+        conn.close()
 
 
 def Encryption(addr, conn):
     key = KeyDict[addr][1]  # Retrieve the key
 
     conn.send("Hello".encode())
+    buffer_size = conn.recv(1024)
+    conn.send("Hello".encode())
     while True:
-        data = conn.recv(1024)
+        data = conn.recv(int(buffer_size))
         if(data == b''):  # Signifies end of encryption sends, terminates the loop
             break
 
@@ -140,7 +150,7 @@ def Encryption(addr, conn):
         encryptor = cipher.encryptor()
 
         # Encrypt the data
-        encrypted_data = encryptor.update(data)
+        encrypted_data = encryptor.update(data) + encryptor.finalize()
 
         # Send the IV and encrypted data together
         conn.send(iv + encrypted_data)
@@ -150,8 +160,11 @@ def Encryption(addr, conn):
 def Decryption(addr, conn):
     key = KeyDict[addr][1]
     conn.send("Hello".encode())
+    buffer_size = conn.recv(1024)
+    conn.send("Hello".encode())
+
     while True:
-        data = conn.recv(2048)
+        data = conn.recv(int(buffer_size))
         if(data == b''):  # Signifies end of decryption sends, terminates the loop
             break
 

@@ -85,7 +85,7 @@ def Console(Q, uQ):
         command = input("server/ ")
         server_command(command, users)
 
-    Shutdown(Q, users, command)
+    Shutdown(Q, users, uQ, command)
 
 
 
@@ -157,13 +157,25 @@ def KillConnection(users, target):
     users.pop(target)
     print("\tUser Connection Has been Terminated")
 
-def Shutdown(q, u, command):
+def Shutdown(q, u, uQ, command):
+    q.put("StopAllConnections")
+
+    # Grabs all users before shutting now
+    if (len(u)):
+        rAlive, wAlive, _ = select.select(u, u, [])
+        alive = list(set(rAlive + wAlive))
+        u = alive
+
+        # Add new users to the users list
+    while not uQ.empty():  # Adds all connected users into this list
+        u.append(uQ.get())
 
     command, _, flag = command.partition(" ")
     if(flag == "-f"):
         KillConnection(u, '-a')
 
-    q.put("StopAllConnections")
+
+
 
 
 def Help():

@@ -13,6 +13,9 @@ import base64
 def client_program():
     upload = download = connected = False
 
+    host = socket.gethostname()
+    print(host)
+
     command = ''
     while command.lower().strip() != "bye":
         while not connected and command.lower().strip() != "bye":
@@ -75,15 +78,17 @@ def client_program():
 
                 if(upload):
                     upload = False
-                    if (plaintext == "Upload"):
+                    if (plaintext.startswith("Upload")):
                         Upload(client_socket, message, key)
                         message = ""
                         continue
 
                 elif(download):
                     download = False
-                    if(plaintext == "Download"):
-                        Download(client_socket, message, key)
+                    if(plaintext.startswith("Download")):
+                        _, buffer_size = plaintext.split('-')
+                        buffer_size = int(buffer_size) + 1024
+                        Download(client_socket, message, key, buffer_size)
                         message = ""
                         continue
 
@@ -159,16 +164,18 @@ def Decrypt(ciphertext, key, isString = True):  # Decrypt only using AES
 
 def Upload(conn, message, key):
     file_name = message.split(' ', 1)[1]
-    noACK = 0
     try:
+        buffer_size = CalculateBuffer(os.path.getsize(file_name))
+        conn.send(Encrypt(str(buffer_size), key))
+        noACK = 0
         # Reading file and sending data to server
         with open(file_name, "rb") as fi:
-            data = fi.read(1024)
+            data = fi.read(buffer_size)
             while data:
                 conn.send(Encrypt(data, key))
                 Ack = Decrypt(conn.recv(1024), key)
                 if (Ack == "ACK"):
-                    data = fi.read(1024)
+                    data = fi.read(buffer_size)
                 else:
                     noACK += 1
                     if(noACK == 3):
@@ -187,7 +194,7 @@ def Upload(conn, message, key):
     except:
         return
 
-def Download(conn, message, key):
+def Download(conn, message, key, buffer_size):
     files_name = message.split(' ', 1)[1]
     try:
         # Reading file and sending data to server
@@ -195,7 +202,7 @@ def Download(conn, message, key):
             conn.send(Encrypt("Download", key))
             print("Starting Download")
             while True:
-                file_data = Decrypt(conn.recv(2048), key, False)
+                file_data = Decrypt(conn.recv(buffer_size), key, False)
                 if file_data == b'-':  # Stop if no more data
                     conn.send(Encrypt("ACK", key))
                     return
@@ -230,6 +237,14 @@ def OnConnect(conn):
     except:
         print("An Error Occurred While Setting Up Connection")
         return
+
+def CalculateBuffer(file_size):
+    Min = 1024
+    Max = 1024 * 63
+    if(file_size == 0):
+        return 1024
+    return max(Min, min(file_size // 10, Max))
+
 
 if __name__ == '__main__':
     client_program()

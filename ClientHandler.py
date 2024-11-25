@@ -4,6 +4,7 @@ import socket
 import shutil
 import time
 import logging
+import AnalysisModule
 
 class ClientHandle:
     # Static Variables for all client threads to use
@@ -191,8 +192,21 @@ class ClientHandle:
 
         while True:
             try:  # Try to send a message to the client and waits for an ack back from the client
+                start = time.time()
                 self._conn.send(self.__MessageEncrypt(message.encode()))
                 ack = self.__ReciveMessage()
+                elapsed_time = time.time() - start
+
+                with self._Lock:
+                    AnalysisModule.record_stats(
+                        operation_type="message",
+                        file_size_MB=None,
+                        transfer_time_s=elapsed_time,
+                        data_rate_MBps=None,
+                    )
+
+                    AnalysisModule.save_stats_to_csv()
+
             except socket.timeout:  # If timeout, increment the counter and resend
                 timeout_counter += 1
                 if (timeout_counter == 3):  # Timeout 3 times or noACK 5 times, presume unstable or dropped connection
@@ -212,7 +226,7 @@ class ClientHandle:
     def __ReciveMessage(self):  # Reccive all messages from the client here
         data = self._conn.recv(1024)
         if (data == b''):
-            self._log.warining(f"Connection with {self._user} has been dropped")
+            self._log.warning(f"{self._user} has closed the connection")
             self.__Close()
             return None
         return self.__MessageDecrypt(data).decode()
@@ -268,8 +282,9 @@ class ClientHandle:
         while True:
             try:
                 Encryption_socket.send((str(self._addr) + f'-Encrypt').encode())  # Sends an Encryption Request
-
                 Encryption_socket.recv(1024)  # Confirmation, ready for payload
+                Encryption_socket.send("2048".encode())  # Send the buffer size to the server
+                Encryption_socket.recv(1024)
             except:
                 sends += 1
                 if (sends == 3):
@@ -296,44 +311,50 @@ class ClientHandle:
                 Encryption_socket.settimeout(None)
                 break
 
+        Encryption_socket.close()
         return encrypted_payload
 
     def __MessageDecrypt(self, payload):  # Sends a request for one-time decryption
-        Encryption_socket = socket.socket()
-        Encryption_socket.connect(self._RSAServer)
+        Decryption_socket = socket.socket()
+        Decryption_socket.connect(self._RSAServer)
 
         sends = 0
-        Encryption_socket.settimeout(5)
+        Decryption_socket.settimeout(5)
         try:
-            Encryption_socket.send((str(self._addr) + f'-Decrypt').encode())  # Sends a Decryption Request
-            Encryption_socket.recv(1024)  # Confirmation, ready for payload
+            Decryption_socket.send((str(self._addr) + f'-Decrypt').encode())  # Sends a Decryption Request
+            Decryption_socket.recv(1024)  # Confirmation, ready for payload
+            Decryption_socket.send("2048".encode())  # Send the buffer size to the server
+            Decryption_socket.recv(1024)
+
         except:
             sends += 1
             if (sends == 3):
                 self._log.critical("Cannot Communicate to the Encryption Server")
-                Encryption_socket.close()
+                Decryption_socket.close()
                 self.__Close()
                 return
 
         key_send = 0
         while True:
             try:
-                Encryption_socket.send(payload)
-                decrypted_payload = Encryption_socket.recv(1024)
+                Decryption_socket.send(payload)
+                decrypted_payload = Decryption_socket.recv(1024)
             except:
                 key_send += 1
                 if (key_send == 4):
                     self._log.critical("Cannot Communicate to the Encryption Server")
                     self.__Close()
             else:
-                Encryption_socket.send(b'')
-                Encryption_socket.settimeout(None)
+                Decryption_socket.send(b'')
+                Decryption_socket.settimeout(None)
                 break
 
+        Decryption_socket.close()
         return decrypted_payload
 
 # Other Functions
     def __Close(self):  # Connection Was Closed, delete this object
+        self._conn.shutdown(socket.SHUT_RDWR)
         self._conn.close()
         del self
 
@@ -352,26 +373,53 @@ class ClientHandle:
         with open("Users.txt", 'w') as file:
             file.write(str(cls._UserDict))
 
+    def __CalculateBuffer(self, file_size):
+        Min = 1024
+        Max = 1024 * 127
+        if(file_size == 0):
+            return 1024
+        return max(Min, min(file_size // 10, Max))      # Optimizes the buffer size to be between 1KB and 64KB
+
 # Server-Client Functions
     def __Upload(self, file):  # Client Uploading a File
-        # in Theory, receiving the name of the file and not the file path. Uploads it to current directory
-        self._conn.send(self.__MessageEncrypt("Upload".encode()))
         file = os.path.join(self._dir, file)
+        self._conn.send(self.__MessageEncrypt(f"Upload".encode()))
 
-        # Open a connection to the Encryption Server
+        # Receive the Buffer Size and add 1KB to the buffer
+        buffer_size = self.__ReciveMessage()
+        buffer_size = int(buffer_size) + 1024
+
+        # Open 2 connections for Encryption/Decryption
         Encryption_socket = socket.socket()
+        Decryption_socket = socket.socket()
+
         Encryption_socket.connect(self._RSAServer)
+        Decryption_socket.connect(self._RSAServer)
+
         Encryption_socket.settimeout(5)
-        EncryptTimeout = 0
-        Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
-        Encryption_socket.send("Decrypt".encode())  # Requests RSA Encryption for a message
+        Decryption_socket.settimeout(5)
+
+        Timeout = 0
+
+        Decryption_socket.send((str(self._addr) + f'-Decrypt').encode())
+        Encryption_socket.send((str(self._addr) + f'-Encrypt').encode())
+
         while True:
-            try:
+            try:    # Set the buffer size on both connections
                 Encryption_socket.recv(1024)
+                Encryption_socket.send(str(2048).encode())
+                Encryption_socket.recv(1024)
+
+                Decryption_socket.recv(1024)
+                Decryption_socket.send(str(buffer_size).encode())
+                Decryption_socket.recv(1024)
+
             except:
-                EncryptTimeout += 1
-                if (EncryptTimeout == 3):
+                Timeout += 1
+                if (Timeout == 3):
                     self._log.critical("Cannot Communicate to the Encryption Server")
+                    Encryption_socket.close()
+                    Decryption_socket.close()
                     self.__Close()
                     return
             else:
@@ -379,34 +427,70 @@ class ClientHandle:
 
         self._conn.settimeout(5)
         try:
-            with open(file, 'xb') as f:  # Read it in binary mode and attempt to create a file
+            with (open(file, 'xb') as f):  # Read it in binary mode and attempt to create a file
+
+                start = time.time()
                 while True:
-                    encryptedBytes = self._conn.recv(2048)
-                    Encryption_socket.send(encryptedBytes)
-                    file_data = Encryption_socket.recv(2048)
+                    encryptedBytes = self._conn.recv(buffer_size)
+                    Decryption_socket.send(encryptedBytes)
+                    file_data = Decryption_socket.recv(buffer_size)
                     if file_data == b'-':  # Stop if no more data
+
+                        # Record stats
+                        elapsed_time = time.time() - start
+                        file_size_MB =  os.path.getsize(file)/ (1024 * 1024)
+                        data_rate_MBps = file_size_MB / elapsed_time if elapsed_time > 0 else 0
+
+                        # Acknowledge File Transfer
                         self.__SendMessage("File Upload Complete!")
                         self._log.info(f'{self._user} Uploaded a File')
-                        Encryption_socket.send("-".encode())
-                        Encryption_socket.settimeout(None)
+
+                        # Close connections
+                        Encryption_socket.send(b'')
+                        Decryption_socket.send(b'')
+                        Encryption_socket.close()
+                        Decryption_socket.close()
                         self._conn.settimeout(None)
+
+                        # Write stats to file
+                        with self._Lock:
+                            AnalysisModule.record_stats(
+                                operation_type="Upload",
+                                file_size_MB=file_size_MB,
+                                transfer_time_s=elapsed_time,
+                                data_rate_MBps=data_rate_MBps,
+                            )
+
+                            AnalysisModule.save_stats_to_csv()
+
                         break
-                    elif file_data == b'+': # Cancels the upload process
+
+                    elif file_data == b'+':  # Cancels the upload process
                         self.__SendMessage("User Request: File Upload Cancelled")
-                        Encryption_socket.send("-".encode())
-                        Encryption_socket.settimeout(None)
+                        Encryption_socket.send(b'')
+                        Decryption_socket.send(b'')
+                        Encryption_socket.close()
+                        Decryption_socket.close()
                         self._conn.settimeout(None)
                         raise EOFError
+
+                    # Writes the data and sends an ACK
                     f.write(file_data)
-                    self._conn.send(self.__MessageEncrypt("ACK".encode()))
+                    Encryption_socket.send("ACK".encode())
+                    ACK = Encryption_socket.recv(1024)
+                    self._conn.send(ACK)
+
         except FileExistsError:  # Duplicate Files cannot exist on the server
             self.__SendMessage("Error: This File Already Exists")
-            Encryption_socket.settimeout(None)
+            Encryption_socket.close()
+            Decryption_socket.close()
             self._conn.settimeout(None)
             return
 
         except EOFError:
             os.remove(file)
+            Encryption_socket.close()
+            Decryption_socket.close()
 
         except Exception as e:  # Error occurred during the transfer, remove the partially uploaded file
             tb = e.__traceback__
@@ -414,36 +498,49 @@ class ClientHandle:
             while tb is not None:
                 lines.append(tb.tb_lineno)
                 tb = tb.tb_next
-
             self._log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
 
             os.remove(file)
-            Encryption_socket.settimeout(None)
-            self._conn.settimeout(None)
+            Encryption_socket.close()
+            Decryption_socket.close()
             self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Upload. Closing the connection")
             self.__Close()
             return
 
     def __Download(self, file):  # Client downloading a file from the server
-        # Either Receive File Name or Path. Download from current directory
         file = os.path.join(self._dir, file)
-        self._conn.send(self.__MessageEncrypt("Download".encode()))
+        buffer_size = self.__CalculateBuffer(os.path.getsize(file))     # Calculate an appropriate buffer size
 
+        # Send the buffer size to the client
+        self._conn.send(self.__MessageEncrypt(f"Download-{buffer_size}".encode()))
 
-        # Open a connection to the Encryption Server
+        # Open 2 connections for Encryption/Decryption
         Encryption_socket = socket.socket()
+        Decryption_socket = socket.socket()
+
         Encryption_socket.connect(self._RSAServer)
+        Decryption_socket.connect(self._RSAServer)
+
         Encryption_socket.settimeout(5)
-        EncryptTimeout = 0
-        Encryption_socket.send((str(self._addr) + f'-').encode())  # Sends the ip addr and port to the Encryption Server
-        Encryption_socket.send("Encrypt".encode())  # Requests RSA Encryption for a message
+        Decryption_socket.settimeout(5)
+
+        Timeout = 0
+        Encryption_socket.send((str(self._addr) + f'-Encrypt').encode())
+        Decryption_socket.send((str(self._addr) + f'-Decrypt').encode())
 
         while True:
             try:
+                # Set the buffer size on both connections
                 Encryption_socket.recv(1024)
+                Encryption_socket.send(str(buffer_size).encode())
+                Encryption_socket.recv(1024)
+
+                Decryption_socket.recv(1024)
+                Decryption_socket.send(str(2048).encode())
+                Decryption_socket.recv(1024)
             except:
-                EncryptTimeout += 1
-                if (EncryptTimeout == 3):
+                Timeout += 1
+                if (Timeout == 3):
                     self._log.critical("Cannot Communicate to the Encryption Server")
                     self.__Close()
                     return
@@ -457,27 +554,52 @@ class ClientHandle:
             return
 
         try:
-            with open(file, 'rb') as f:  # Read the file in binary mode, no need to encode it
-                file_data = f.read(1024)
+            with (open(file, 'rb') as f):  # Read the file in binary mode, no need to encode it
+                start = time.time()
+                file_data = f.read(buffer_size)
                 while file_data:    # Automatically stops at EOF
                     Encryption_socket.send(file_data)
-                    encrypted_bytes = Encryption_socket.recv(2048)
+                    encrypted_bytes = Encryption_socket.recv(buffer_size + 1024)
                     self._conn.send(encrypted_bytes)
-                    Ack = self.__MessageDecrypt(self._conn.recv(1024)).decode()
+                    Decryption_socket.send(self._conn.recv(1024))
+                    Ack = Decryption_socket.recv(1024).decode()
                     if(Ack != "ACK"):
                         noACK += 1
                         if(noACK == 3):
                             self._log.warning("De-synchronized Connection With Host")
                             return
                     else:
-                        file_data = f.read(1024)
+                        file_data = f.read(buffer_size)
 
+                # Record the statistics
+                elapsed_time = time.time() - start
+                file_size_MB = os.path.getsize(file) / (1024 * 1024)
+                data_rate_MBps = file_size_MB / elapsed_time if elapsed_time > 0 else 0
+
+                # Close the Connections
+                Encryption_socket.send(b'')
+                Decryption_socket.send(b'')
+                Encryption_socket.close()
+                Decryption_socket.close()
+
+                # Tells client download is complete
                 self._conn.send(self.__MessageEncrypt("-".encode()))
                 self.__ReciveMessage()
                 self.__SendMessage("File Download Complete!")
                 self._log.info(f'{self._user} has Downloaded a File')
 
-        except FileNotFoundError:  # Could not find the file
+                # Write stats to file
+                with self._Lock:
+                    AnalysisModule.record_stats(
+                        operation_type="Download",
+                        file_size_MB=file_size_MB,
+                        transfer_time_s=elapsed_time,
+                        data_rate_MBps=data_rate_MBps,
+                    )
+
+                    AnalysisModule.save_stats_to_csv()
+
+        except FileNotFoundError:  # Could not find the file, Stop the transfer
             self._conn.send(self.__MessageEncrypt('+'.encode()))
             self.__SendMessage("Error: Cannot Find File")
             return
@@ -488,9 +610,10 @@ class ClientHandle:
             while tb is not None:
                 lines.append(tb.tb_lineno)
                 tb = tb.tb_next
-
             self._log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
-            
+
+            Encryption_socket.close()
+            Decryption_socket.close()
             self._conn.send(self.__MessageEncrypt('+'.encode()))
             self.__SendMessage("Error: Something Occurred During File Transfer. Stopping the Download. Closing the connection")
             self.__Close()
