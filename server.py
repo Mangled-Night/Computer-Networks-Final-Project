@@ -141,6 +141,9 @@ def server_command(request, users):
         case "stats":
             Stats(target)
 
+        case _:
+            print("Enter a server command. Type help for a list of commands")
+
 
 def KillConnection(users, target):
 
