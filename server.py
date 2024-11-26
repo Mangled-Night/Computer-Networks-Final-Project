@@ -77,7 +77,10 @@ def Console(Q, uQ):
 
     while not command.lower().startswith('shutdown'):
         print("\tGetting all users...")
-        # Remove all dead connections
+
+        # Remove all close connections
+        users = [u for u in users if u.fileno() != -1]
+
         if(len(users)):
             rAlive, wAlive, _ = select.select(users, users, [])
             alive = list(set(rAlive + wAlive))

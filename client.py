@@ -1,6 +1,5 @@
 import os
 import socket
-from fileinput import filename
 from os import urandom
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
