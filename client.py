@@ -1,97 +1,248 @@
+import os
 import socket
-import tkinter as tk
+from fileinput import filename
+from os import urandom
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization
+import base64
 
-class GUI:
-    def __init__(self):
-        self.root = tk.Tk()
-
-        self.root.geometry("500x500")
-        self.root.title("CNT_Project")
-
-        self.label = tk.Label(self.root, text="Your mother", font=('Arial', 18))
-        self.label.pack(padx = 20, pady=20)
-
-        self.buttonframe = tk.Frame(self.root)
-        self.buttonframe.columnconfigure(0, weight=1)
-        self.buttonframe.columnconfigure(1, weight=1)
-        self.buttonframe.columnconfigure(2, weight=1)
-
-        self.btn1 = tk.Button(self.buttonframe, text="Connect", font=('Arial', 18), command=client_program)
-        self.btn1.grid(row=0, column=0, sticky=tk.W+tk.E)
-
-        self.btn2 = tk.Button(self.buttonframe, text="Upload", font=('Arial', 18))
-        self.btn2.grid(row=0, column=1, sticky=tk.W+tk.E)
-
-        self.btn3 = tk.Button(self.buttonframe, text="Download", font=('Arial', 18))
-        self.btn3.grid(row=0, column=2, sticky=tk.W+tk.E)
-
-        self.btn4 = tk.Button(self.buttonframe, text="Delete", font=('Arial', 18))
-        self.btn4.grid(row=1, column=0, sticky=tk.W+tk.E)
-
-        self.btn5 = tk.Button(self.buttonframe, text="Dir", font=('Arial', 18))
-        self.btn5.grid(row=1, column=1, sticky=tk.W+tk.E)
-
-        self.btn6 = tk.Button(self.buttonframe, text="Subfolder", font=('Arial', 18))
-        self.btn6.grid(row=1, column=2, sticky=tk.W+tk.E)
-
-        self.buttonframe.pack(fill='x')
-
-        self.root.mainloop()
-
-def connect_server(host, port):
-    print("Establishing a connection to the server...")
-    client_socket = socket.socket()
-    try:
-        client_socket.connect((host, port))
-        print(f"Connection established: {host} : {port}")
-        return client_socket
-    except ConnectionError:
-        print("Unable to establish a connection to the server.")
-        return None
-
-
-def receive_response(client_socket):
-    # receive response from server
-    try:
-        data = client_socket.recv(1024).decode()
-        return data
-    except ConnectionError:
-        print("Unable to receive data.")
-        return None
-
-def on_select(event):
-    selected_item = combo_box.get()
-    label.config(text="Selected Item: " + selected_item)
-
-def send_message(client_socket, message):
-    try:
-        client_socket.send(message.encode())
-    except ConnectionError:
-        print("Unable to send data.")
 
 def client_program():
-    host = socket.gethostname()  # as both code is running on same pc
-    port = 5000  # socket server port number
+    upload = download = connected = False
 
-    client_socket = connect_server(host, port)  # connect to the server
-    if not client_socket:
-        return #exits if unable to connect
+    host = socket.gethostname()
+    print(host)
 
-    print("Type 'disconnet' to exit.")
-    message = input("Enter Command: ")
+    command = ''
+    while command.lower().strip() != "bye":
+        while not connected and command.lower().strip() != "bye":
+            command = input("Enter bye to leave or Help for help. Connect: ")
 
-    while message.lower().strip() != 'disconnet':
-        client_socket.send(message.encode())  # send message
+            if(command.lower() == "help"):
+                print("Please Enter in this format: [Host/IP] [Port]")
+                continue
+            elif(command.lower() == "bye"):
+                continue
+            else:
+                host, _, port = command.partition(" ")
 
-        response = receive_response(client_socket)
-        if response:
-            print(f"Server response: {response}")
-        message = input("Enter Command:")
+            try:
+                client_socket = socket.socket()  # instantiate
+                client_socket.connect((host, int(port)))
+            except ConnectionRefusedError:
+                print("The host of the IP/Port is not running/accepting connections")
+            except socket.gaierror:
+                print("Could not resolve hostname to an IP")
+            except socket.timeout:
+                print(" Could not Connect to the Server within allocated time")
+            except Exception as e:
+                print(e)
+                print("Please Enter Using the Correct Format. Type Help for help")
+            else:
+                connected = True
 
-    # exit
-    print("Disconnecting...")
-    send_message(client_socket, "Disconnected")
-    client_socket.close()  # close the connection
+
+
+        if (connected):
+            key = OnConnect(client_socket)
+            message = ''  # take input
+
+            while message.lower().strip() != 'end':
+                try:
+                    if (message != ""):
+                        ciphermessage = Encrypt(message, key)
+                        client_socket.send(ciphermessage)  # send message
+
+                    if message.startswith('upload'):
+                        upload = True
+
+                    elif message.startswith('download'):
+                        download = True
+
+                    data = client_socket.recv(1024)  # receive response
+                except Exception as e:
+                    print(e)
+                    client_socket.close()
+                    print("Connection does not exist")
+                    break
+
+                if (len(data) <= 16):
+                    client_socket.close()
+                    print("Connection has been terminated")
+                    break
+
+                plaintext = Decrypt(data, key)
+
+                if(upload):
+                    upload = False
+                    if (plaintext.startswith("Upload")):
+                        Upload(client_socket, message, key)
+                        message = ""
+                        continue
+
+                elif(download):
+                    download = False
+                    if(plaintext.startswith("Download")):
+                        _, buffer_size = plaintext.split('-')
+                        buffer_size = int(buffer_size) + 1024
+                        Download(client_socket, message, key, buffer_size)
+                        message = ""
+                        continue
+
+
+                clientData, serverState = plaintext.split('~')
+                print(f'{clientData}')  # show in terminal, deketed "Received from server:"  to clean up client interface
+                client_socket.send(Encrypt("ACK", key))
+
+                if (serverState == "Listening"):
+                    message = input(" -> ")  # again take input
+                else:
+                    message = ""
+
+            try:
+                client_socket.send(Encrypt("End", key))
+            except:
+                pass
+
+            client_socket.close()  # close the connection
+            connected = False
+
+
+def SendKeys(conn, public_key, AES_key):
+    encoded_key = base64.b64encode(AES_key)
+    encrypted_key = public_key.encrypt(
+        encoded_key,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
+            algorithm=hashes.SHA256(),
+            label=None
+        )
+    )
+    conn.send(encrypted_key)
+    return public_key
+
+
+def Encrypt(plaintext, key):  # Double encrypt the message being sent
+    iv = urandom(16)
+    cipher = Cipher(
+        algorithms.AES(key),
+        modes.CTR(iv),
+        backend=default_backend()
+    )
+    encryptor = cipher.encryptor()
+
+    if (isinstance(plaintext, str)):
+        # Ensure plaintext is encoded to bytes
+        ciphertext = encryptor.update(plaintext.encode()) + encryptor.finalize()  # Encrypt in AES
+
+    else:  # plaintext is a bytes object, no need to encode
+        ciphertext = encryptor.update(plaintext) + encryptor.finalize()  # Encrypt in AES
+    return iv + ciphertext
+
+
+def Decrypt(ciphertext, key, isString = True):  # Decrypt only using AES
+    iv = ciphertext[:16]
+    cipher = Cipher(
+        algorithms.AES(key),
+        modes.CTR(iv),
+        backend=default_backend()
+    )
+    decryptor = cipher.decryptor()
+
+    plaintext = decryptor.update(ciphertext[16:]) + decryptor.finalize()  # Decrypt using AES
+
+    if(isString):
+        return plaintext.decode()
+
+    else:   # In the event, we are expecting file bytes
+        return plaintext
+
+
+
+def Upload(conn, message, key):
+    file_name = message.split(' ', 1)[1]
+    try:
+        buffer_size = CalculateBuffer(os.path.getsize(file_name))
+        conn.send(Encrypt(str(buffer_size), key))
+        noACK = 0
+        # Reading file and sending data to server
+        with open(file_name, "rb") as fi:
+            data = fi.read(buffer_size)
+            while data:
+                conn.send(Encrypt(data, key))
+                Ack = Decrypt(conn.recv(1024), key)
+                if (Ack == "ACK"):
+                    data = fi.read(buffer_size)
+                else:
+                    noACK += 1
+                    if(noACK == 3):
+                        print("De-synchronized Connection With Server")
+                        return
+
+            # File is closed after data is sent
+        conn.send(Encrypt("-", key))
+
+
+    except FileNotFoundError:
+        conn.send(Encrypt("+", key))
+        print('You entered an invalid filename!\
+        Please enter a valid name')
+
+    except:
+        return
+
+def Download(conn, message, key, buffer_size):
+    files_name = message.split(' ', 1)[1]
+    try:
+        # Reading file and sending data to server
+        with open(files_name, "xb") as fil:
+            print("Starting Download")
+            while True:
+                file_data = Decrypt(conn.recv(buffer_size), key, False)
+                if file_data == b'-':  # Stop if no more data
+                    conn.send(Encrypt("ACK", key))
+                    return
+                elif file_data == b'+':
+                    raise EOFError
+                fil.write(file_data)
+                conn.send(Encrypt("ACK", key))
+
+    except FileExistsError:
+        print('This File Already Exists!')
+        conn.send(Encrypt('+', key))
+
+    except EOFError:
+        os.remove(files_name)
+        print("Server Request: Cancelling Download")
+
+    except Exception as e:
+        print(e)
+        return
+
+
+def OnConnect(conn):
+    try:
+        # Key Exchange for Encryption Handshake
+        key = urandom(32)
+        data = conn.recv(1024)
+        public_key = serialization.load_pem_public_key(data)
+        SendKeys(conn, public_key, key)
+
+        return key
+
+    except:
+        print("An Error Occurred While Setting Up Connection")
+        return
+
+def CalculateBuffer(file_size):
+    Min = 1024
+    Max = 1024 * 63
+    if(file_size == 0):
+        return 1024
+    return max(Min, min(file_size // 10, Max))
 
 
 if __name__ == '__main__':
