@@ -101,61 +101,81 @@ class ClientHandle:
 
 # Authentication/Account Creation
     def __Authenticate(self):  # Client Authentication Preformed Here
-        self.__SendMessage("Welcome to the Computer Networks Server! If you are a new user, press 0. "
-                           "If you already have a username, press 1", 0)
-
         while True:
-            data = self.__ReciveMessage()
-            if (data == '0'):  # This is a new user, set up an account for them
-                self.__NewUserSetup()
-                self.__SendMessage("Please Try to Log in With your New Account. Enter your username", 0)
+            back = False
+            self.__SendMessage("Welcome to the Computer Networks Server! If you are a new user, press 0. "
+                               "If you already have a username, press 1. Type End to exit", 0)
 
-            elif (data == '1'):  # This is a current user, go through log in process
-                self.__SendMessage("Please enter your username", 0)
-
-            else:  # Handle any mis-inputs
-                self.__SendMessage("Please input either 0 for new user or 1 for current user", 0)
-                continue
-
-            while True:
+            while True and not back:
                 data = self.__ReciveMessage()
-                if (self.__FetchUser(data)):  # Tries to See if Username is in the dictionary
-                    self._user = data
-                    self._TryCounter = 0
-                    self.__SendMessage("User Found, please enter your password", 0)
-                    while True:
+                if (data == '0'):  # This is a new user, set up an account for them
+                    if(not self.__NewUserSetup()):  # If they entered 2
+                        break
 
-                        data = self.__ReciveMessage()
-                        if (self.__FetchPass(data)):  # Tries to see if password matches the password associated
-                            # with that user
-                            self.__SendMessage("Authentication Complete. Welcome " + self._user)
-                            self._log.info(f"{self._user} has Authenticated in")
-                            self._dir = os.path.join(os.getcwd(), self._user)
-                            return True
+                    self.__SendMessage("Please Try to Log in With your New Account. Enter your username. Enter 2 to exit", 0)
 
-                        else:  # Failed Password Attempt
-                            if (self.__Failed("Incorrect Password. Please Try Again")):
-                                return False
+                elif (data == '1'):  # This is a current user, go through log in process
+                    self.__SendMessage("Please enter your username. Enter 2 to exit", 0)
 
-                else:  # Failed attempt at getting username
-                    if (self.__Failed("Username Not Found. Please Try Again")):
-                        return False
-
-    def __NewUserSetup(self):  # Set up a user account if client doesn't have one
-        while True:
-            self.__SendMessage("Please Enter a Username", 0)
-            user = self.__ReciveMessage()
-            self.__SendMessage("Is this the Username that you want? y? Enter anything for no", 0)
-            data = self.__ReciveMessage().lower()  # Receives and ensures that this is the username they want
-
-            if (data == 'y'):
-                if (self.__FetchUser(user)):  # Checks to see if username has been taken
-                    self.__SendMessage("This username is taken")
+                else:  # Handle any mis-inputs
+                    self.__SendMessage("Please input either 0 for new user or 1 for current user", 0)
                     continue
 
                 while True:
-                    self.__SendMessage("Please Enter a Password", 0)
+                    data = self.__ReciveMessage()
+                    if(data == '2'):
+                        back = True
+                        break
+                    if (self.__FetchUser(data)):  # Tries to See if Username is in the dictionary
+                        self._user = data
+                        self._TryCounter = 0
+                        self.__SendMessage("User Found, please enter your password. Enter 2 to exit", 0)
+                        while True:
+
+                            data = self.__ReciveMessage()
+                            if(data == '2'):
+                                break
+                            if (self.__FetchPass(data)):  # Tries to see if password matches the password associated
+                                # with that user
+                                self.__SendMessage("Authentication Complete. Welcome " + self._user)
+                                self._log.info(f"{self._user} has Authenticated in")
+                                self._dir = os.path.join(os.getcwd(), self._user)
+                                return True
+
+                            else:  # Failed Password Attempt
+                                if (self.__Failed("Incorrect Password. Please Try Again")):
+                                    return False
+
+                    else:  # Failed attempt at getting username
+                        if (self.__Failed("Username Not Found. Please Try Again")):
+                            return False
+
+    def __NewUserSetup(self):  # Set up a user account if client doesn't have one
+        while True:
+            self.__SendMessage("Please Enter a Username. Enter 2 to exit", 0)
+            user = self.__ReciveMessage()
+
+            if (self.__FetchUser(user)):  # Checks to see if username has been taken
+                self.__SendMessage("This username is taken")
+                continue
+
+            elif(user == '2'):
+                return False
+
+            self.__SendMessage("Is this the Username that you want? y? Enter anything for no", 0)
+            data = self.__ReciveMessage().lower()  # Receives and ensures that this is the username they want
+
+            if (data != 'y'):
+                continue
+
+            else:
+                while True:
+                    self.__SendMessage("Please Enter a Password. Enter 2 to exit", 0)
                     passcode = self.__ReciveMessage()
+
+                    if(passcode == '2'):
+                        return False
+
                     self.__SendMessage("Is this the password that you want? y? Enter anything for no", 0)
                     data = self.__ReciveMessage().lower()  # Receives and ensures that this is the password they want
 
@@ -163,7 +183,9 @@ class ClientHandle:
                         self._UserDict[user] = passcode  # Adds username and password to dictionary
                         os.mkdir(user) # Makes a directory for that user within the Server
                         self._log.info("A new User Account Has Been Created")
-                        return
+                        return True
+
+
 
     def __FetchUser(self, username):  # Gets a username from the dictionary
         if (self._UserDict.get(username) != None):  # If get Returns a user, then that username is in the dictionary
