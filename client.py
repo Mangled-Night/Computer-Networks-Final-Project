@@ -94,7 +94,7 @@ def client_program():
 
 
                 clientData, serverState = plaintext.split('~')
-                print(f'Received from server: {clientData}')  # show in terminal
+                print(f'{clientData}')  # show in terminal, deketed "Received from server:"  to clean up client interface
                 client_socket.send(Encrypt("ACK", key))
 
                 if (serverState == "Listening"):
