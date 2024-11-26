@@ -190,6 +190,20 @@ def Shutdown(q, u, uQ, command):
         KillConnection(u, '-a')
 
 
+def wrap_columns_in_dataframe(df, max_columns=3):
+    # Get the number of columns in the DataFrame
+    num_columns = len(df.columns)
+
+    # List to store split DataFrames
+    chunked_dfs = []
+
+    # Split the DataFrame into smaller chunks
+    for start in range(0, num_columns, max_columns):
+        chunked_df = df.iloc[:, start:start + max_columns]
+        chunked_dfs.append(chunked_df)
+
+    return chunked_dfs
+
 def Stats(flags):
     s = pd.read_csv('operation_stats.csv')
     grouped_stats = None
@@ -225,13 +239,19 @@ def Stats(flags):
             )
 
         case '':
-            grouped_stats = s.groupby("operation_type").agg(
+            grouped_stats1 = s.groupby("operation_type").agg(
                 total_operations=("operation_type", "size"),
                 total_MB_transfered=('file_size_MB', "sum"),
-                total_time_s=('transfer_time_s', "sum"),
+                total_time_s=('transfer_time_s', "sum")
+            )
+
+            grouped_stats2 = s.groupby("operation_type").agg(
                 average_size_MB=('file_size_MB', "mean"),
                 average_time_s=('transfer_time_s', "mean"),
-                average_rate_MBps=('data_rate_MBps', "mean"),
+                average_rate_MBps=('data_rate_MBps', "mean")
+            )
+
+            grouped_stats3 = s.groupby("operation_type").agg(
                 min_MB=("file_size_MB", "min"),
                 max_MB=("file_size_MB", "max"),
                 min_time_s=('transfer_time_s', "min"),
@@ -239,12 +259,17 @@ def Stats(flags):
                 min_rate_MBps=("data_rate_MBps", "min"),
                 max_rate_MBps=('data_rate_MBps', "max")
             )
+            print(tabulate(grouped_stats1, headers="keys", tablefmt="grid", showindex=True))
+            print(tabulate(grouped_stats2, headers="keys", tablefmt="grid", showindex=True))
+            print(tabulate(grouped_stats3, headers="keys", tablefmt="grid", showindex=True))
+            return
+
 
         case _:
             print("\n\tPlease Enter the Correct Flag (s, m, r)")
             return
 
-    print(tabulate(grouped_stats, headers='keys', tablefmt='fancy_grid', showindex=True))
+    print(tabulate(grouped_stats, headers="keys", tablefmt="grid", showindex=True))
 
 
 def Help():
