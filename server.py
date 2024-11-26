@@ -189,21 +189,6 @@ def Shutdown(q, u, uQ, command):
     if(flag == "-f"):
         KillConnection(u, '-a')
 
-
-def wrap_columns_in_dataframe(df, max_columns=3):
-    # Get the number of columns in the DataFrame
-    num_columns = len(df.columns)
-
-    # List to store split DataFrames
-    chunked_dfs = []
-
-    # Split the DataFrame into smaller chunks
-    for start in range(0, num_columns, max_columns):
-        chunked_df = df.iloc[:, start:start + max_columns]
-        chunked_dfs.append(chunked_df)
-
-    return chunked_dfs
-
 def Stats(flags):
     s = pd.read_csv('operation_stats.csv')
     grouped_stats = None
