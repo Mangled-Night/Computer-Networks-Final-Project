@@ -21,6 +21,7 @@ def EncryptionServer():
     logging.basicConfig(
         level=logging.DEBUG,  # Set the minimum logging level
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt="%Y-%m-%d %H:%M:%S",
         handlers=[
             logging.FileHandler("my_log_file.log")  # Write logs to a file
     ])

@@ -199,7 +199,6 @@ def Download(conn, message, key, buffer_size):
     try:
         # Reading file and sending data to server
         with open(files_name, "xb") as fil:
-            conn.send(Encrypt("Download", key))
             print("Starting Download")
             while True:
                 file_data = Decrypt(conn.recv(buffer_size), key, False)

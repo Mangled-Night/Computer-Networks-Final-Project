@@ -401,11 +401,12 @@ class ClientHandle:
 
         Timeout = 0
 
-        Decryption_socket.send((str(self._addr) + f'-Decrypt').encode())
-        Encryption_socket.send((str(self._addr) + f'-Encrypt').encode())
-
         while True:
             try:    # Set the buffer size on both connections
+
+                Decryption_socket.send((str(self._addr) + f'-Decrypt').encode())
+                Encryption_socket.send((str(self._addr) + f'-Encrypt').encode())
+
                 Encryption_socket.recv(1024)
                 Encryption_socket.send(str(2048).encode())
                 Encryption_socket.recv(1024)
@@ -508,11 +509,24 @@ class ClientHandle:
             return
 
     def __Download(self, file):  # Client downloading a file from the server
-        file = os.path.join(self._dir, file)
-        buffer_size = self.__CalculateBuffer(os.path.getsize(file))     # Calculate an appropriate buffer size
+        try:
+            file = os.path.join(self._dir, file)
 
-        # Send the buffer size to the client
-        self._conn.send(self.__MessageEncrypt(f"Download-{buffer_size}".encode()))
+            # Calculate an appropriate buffer size
+            buffer_size = self.__CalculateBuffer(os.path.getsize(file))
+
+        except FileNotFoundError:  # Could not find the file, Stop the transfer
+            self.__SendMessage("Error: Cannot Find File")
+            return
+        except Exception as e:
+            tb = e.__traceback__
+            lines = []
+            while tb is not None:
+                lines.append(tb.tb_lineno)
+                tb = tb.tb_next
+            self._log.error(f"Internal Server Error. Closing Connection: {e}: lines: {lines}")
+            return
+
 
         # Open 2 connections for Encryption/Decryption
         Encryption_socket = socket.socket()
@@ -525,11 +539,12 @@ class ClientHandle:
         Decryption_socket.settimeout(5)
 
         Timeout = 0
-        Encryption_socket.send((str(self._addr) + f'-Encrypt').encode())
-        Decryption_socket.send((str(self._addr) + f'-Decrypt').encode())
 
         while True:
             try:
+                Encryption_socket.send((str(self._addr) + f'-Encrypt').encode())
+                Decryption_socket.send((str(self._addr) + f'-Decrypt').encode())
+
                 # Set the buffer size on both connections
                 Encryption_socket.recv(1024)
                 Encryption_socket.send(str(buffer_size).encode())
@@ -538,8 +553,10 @@ class ClientHandle:
                 Decryption_socket.recv(1024)
                 Decryption_socket.send(str(2048).encode())
                 Decryption_socket.recv(1024)
+
             except:
                 Timeout += 1
+                self._log.info(Timeout)
                 if (Timeout == 3):
                     self._log.critical("Cannot Communicate to the Encryption Server")
                     self.__Close()
@@ -549,11 +566,9 @@ class ClientHandle:
         self._conn.settimeout(5)
         noACK = 0
 
-        confirm = self.__ReciveMessage()
-        if(confirm == '+'):
-            return
-
         try:
+            # Send the buffer size to the client
+            self._conn.send(self.__MessageEncrypt(f"Download-{buffer_size}".encode()))
             with (open(file, 'rb') as f):  # Read the file in binary mode, no need to encode it
                 start = time.time()
                 file_data = f.read(buffer_size)
@@ -567,6 +582,7 @@ class ClientHandle:
                         noACK += 1
                         if(noACK == 3):
                             self._log.warning("De-synchronized Connection With Host")
+                            self._conn.send(self.__MessageEncrypt('+'.encode()))
                             return
                     else:
                         file_data = f.read(buffer_size)
@@ -598,11 +614,6 @@ class ClientHandle:
                     )
 
                     AnalysisModule.save_stats_to_csv()
-
-        except FileNotFoundError:  # Could not find the file, Stop the transfer
-            self._conn.send(self.__MessageEncrypt('+'.encode()))
-            self.__SendMessage("Error: Cannot Find File")
-            return
 
         except Exception as e:  # Error occurred during the transfer, stop the transfer
             tb = e.__traceback__
