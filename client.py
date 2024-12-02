@@ -12,9 +12,6 @@ import base64
 def client_program():
     upload = download = connected = False
 
-    host = socket.gethostname()
-    print(host)
-
     command = ''
     while command.lower().strip() != "bye":
         while not connected and command.lower().strip() != "bye":
@@ -91,9 +88,8 @@ def client_program():
                         message = ""
                         continue
 
-
                 clientData, serverState = plaintext.split('~')
-                print(f'{clientData}')  # show in terminal, deketed "Received from server:"  to clean up client interface
+                print(f'{clientData}')
                 client_socket.send(Encrypt("ACK", key))
 
                 if (serverState == "Listening"):
@@ -142,7 +138,7 @@ def Encrypt(plaintext, key):  # Double encrypt the message being sent
     return iv + ciphertext
 
 
-def Decrypt(ciphertext, key, isString = True):  # Decrypt only using AES
+def Decrypt(ciphertext, key, isString = True, ACK=False):  # Decrypt only using AES
     iv = ciphertext[:16]
     cipher = Cipher(
         algorithms.AES(key),
@@ -151,10 +147,14 @@ def Decrypt(ciphertext, key, isString = True):  # Decrypt only using AES
     )
     decryptor = cipher.decryptor()
 
+
     plaintext = decryptor.update(ciphertext[16:]) + decryptor.finalize()  # Decrypt using AES
 
     if(isString):
-        return plaintext.decode()
+       if(ACK):
+           return plaintext[:3].decode()
+       else:
+           return plaintext.decode()
 
     else:   # In the event, we are expecting file bytes
         return plaintext
@@ -165,23 +165,28 @@ def Upload(conn, message, key):
     file_name = message.split(' ', 1)[1]
     try:
         buffer_size = CalculateBuffer(os.path.getsize(file_name))
+        print(buffer_size)
         conn.send(Encrypt(str(buffer_size), key))
+        conn.recv(1024)
+        print("Got ACK")
         noACK = 0
         # Reading file and sending data to server
         with open(file_name, "rb") as fi:
             data = fi.read(buffer_size)
             while data:
                 conn.send(Encrypt(data, key))
-                Ack = Decrypt(conn.recv(1024), key)
-                if (Ack == "ACK"):
+                Ack = Decrypt(conn.recv(1024), key, ACK=True)
+                if (Ack.startswith("ACK")):
                     data = fi.read(buffer_size)
                 else:
                     noACK += 1
                     if(noACK == 3):
+                        conn.send(Encrypt("+", key))
                         print("De-synchronized Connection With Server")
                         return
 
             # File is closed after data is sent
+        print("EOF")
         conn.send(Encrypt("-", key))
 
 
@@ -190,7 +195,8 @@ def Upload(conn, message, key):
         print('You entered an invalid filename!\
         Please enter a valid name')
 
-    except:
+    except Exception as e:
+        print(e)
         return
 
 def Download(conn, message, key, buffer_size):
@@ -238,7 +244,7 @@ def OnConnect(conn):
 
 def CalculateBuffer(file_size):
     Min = 1024
-    Max = 1024 * 63
+    Max = 1024 * 1023
     if(file_size == 0):
         return 1024
     return max(Min, min(file_size // 10, Max))
