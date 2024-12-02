@@ -158,13 +158,11 @@ class ClientHandle:
             if (self.__FetchUser(user)):  # Checks to see if username has been taken
                 self.__SendMessage("This username is taken")
                 continue
-
             elif(user == '2'):
                 return False
 
             self.__SendMessage("Is this the Username that you want? y? Enter anything for no", 0)
             data = self.__ReciveMessage().lower()  # Receives and ensures that this is the username they want
-
             if (data != 'y'):
                 continue
 
@@ -172,13 +170,11 @@ class ClientHandle:
                 while True:
                     self.__SendMessage("Please Enter a Password. Enter 2 to exit", 0)
                     passcode = self.__ReciveMessage()
-
                     if(passcode == '2'):
                         return False
 
                     self.__SendMessage("Is this the password that you want? y? Enter anything for no", 0)
                     data = self.__ReciveMessage().lower()  # Receives and ensures that this is the password they want
-
                     if (data == 'y'):
                         self._UserDict[user] = passcode  # Adds username and password to dictionary
                         os.mkdir(user) # Makes a directory for that user within the Server
@@ -726,7 +722,11 @@ class ClientHandle:
 
             else:  # Travel up the directory path
                 self._dirDepth -= 1
-                self._dir, _, _ = self._dir.rpartition("\\")
+                if(os.name == 'nt'):
+                    self._dir, _, _ = self._dir.rpartition("\\")
+                else:
+                    self._dir, _, _ = self._dir.rpartition("/")
+
                 self.__SendMessage(f"Currently in {self._dir}")
 
         elif (not self.__CheckInDir(target)):  # Checks to see if the directory exists
