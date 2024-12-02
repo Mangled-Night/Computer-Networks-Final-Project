@@ -8,8 +8,6 @@ import logging
 import pandas as pd
 from tabulate import tabulate
 
-
-
 def server_program():
     host = socket.gethostname()
     port = 5000  # Port to bind the server
@@ -55,6 +53,9 @@ def server_program():
         try:
             conn, address = server_socket.accept()
             conn.setblocking(True)
+            conn.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
+            conn.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1048576)
+
         except BlockingIOError:
             if(not Q.empty()):
                 print("Shutting Down the Server")
@@ -89,6 +90,8 @@ def Console(Q, uQ):
         # Add new users to the users list
         while not uQ.empty(): # Adds all connected users into this list
             users.append(uQ.get())
+
+        users = [u for u in users if u.fileno() != -1]
 
         print("\tAll users added")
         command = input("server/ ")

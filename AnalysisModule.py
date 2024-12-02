@@ -1,9 +1,9 @@
 import csv
 from datetime import datetime
 import os
+
 # Initialize an empty list to hold the stats for each operation
 stats = []
-
 def record_stats(operation_type, file_size_MB, transfer_time_s, data_rate_MBps):
     # Append the operation details as a dictionary to the stats list
     stats.append({
@@ -15,8 +15,6 @@ def record_stats(operation_type, file_size_MB, transfer_time_s, data_rate_MBps):
     })
 
 fieldnames = ["timestamp", "operation_type", "file_size_MB", "transfer_time_s", "data_rate_MBps"]
-
-
 # Saves stats to a csv file
 def save_stats_to_csv(filename="operation_stats.csv"):
     # Check if the file exists

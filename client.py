@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 import base64
+import time
 
 
 def client_program():
@@ -28,6 +29,9 @@ def client_program():
             try:
                 client_socket = socket.socket()  # instantiate
                 client_socket.connect((host, int(port)))
+                client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1048576)
+                client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1048576)
+
             except ConnectionRefusedError:
                 print("The host of the IP/Port is not running/accepting connections")
             except socket.gaierror:
@@ -83,7 +87,7 @@ def client_program():
                     download = False
                     if(plaintext.startswith("Download")):
                         _, buffer_size = plaintext.split('-')
-                        buffer_size = int(buffer_size) + 1024
+                        buffer_size = int(buffer_size) + 16
                         Download(client_socket, message, key, buffer_size)
                         message = ""
                         continue
@@ -138,7 +142,7 @@ def Encrypt(plaintext, key):  # Double encrypt the message being sent
     return iv + ciphertext
 
 
-def Decrypt(ciphertext, key, isString = True, ACK=False):  # Decrypt only using AES
+def Decrypt(ciphertext, key, isString = True):  # Decrypt only using AES
     iv = ciphertext[:16]
     cipher = Cipher(
         algorithms.AES(key),
@@ -147,14 +151,10 @@ def Decrypt(ciphertext, key, isString = True, ACK=False):  # Decrypt only using 
     )
     decryptor = cipher.decryptor()
 
-
     plaintext = decryptor.update(ciphertext[16:]) + decryptor.finalize()  # Decrypt using AES
 
     if(isString):
-       if(ACK):
-           return plaintext[:3].decode()
-       else:
-           return plaintext.decode()
+        return plaintext.decode()
 
     else:   # In the event, we are expecting file bytes
         return plaintext
@@ -163,31 +163,47 @@ def Decrypt(ciphertext, key, isString = True, ACK=False):  # Decrypt only using 
 
 def Upload(conn, message, key):
     file_name = message.split(' ', 1)[1]
+    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
     try:
         buffer_size = CalculateBuffer(os.path.getsize(file_name))
         print(buffer_size)
         conn.send(Encrypt(str(buffer_size), key))
         conn.recv(1024)
-        print("Got ACK")
+        conn.send(Encrypt(str(os.path.getsize(file_name)), key))
+        conn.recv(1024)
         noACK = 0
         # Reading file and sending data to server
         with open(file_name, "rb") as fi:
             data = fi.read(buffer_size)
             while data:
-                conn.send(Encrypt(data, key))
-                Ack = Decrypt(conn.recv(1024), key, ACK=True)
-                if (Ack.startswith("ACK")):
-                    data = fi.read(buffer_size)
-                else:
-                    noACK += 1
-                    if(noACK == 3):
-                        conn.send(Encrypt("+", key))
-                        print("De-synchronized Connection With Server")
-                        return
+                start = time.time()
+                conn.sendall(Encrypt(data, key))
+                print(f"Sent {len(data)} bytes")
 
-            # File is closed after data is sent
+                if (len(data) >= buffer_size):
+                    Ack = conn.recv(1024)
+                    print(Ack)
+                    print(f"t-{time.time() - start}")
+                    if(len(Ack) > 7):
+                        Decrypt(Ack, key)
+                    if (Ack.decode().startswith("ACK")):
+                        conn.send(b'ACK')
+                        data = fi.read(buffer_size)
+                    else:
+                        noACK += 1
+                        if noACK == 3:
+                            conn.send(b"+++++")
+                            print("De-synchronized Connection With Server")
+                            return
+                else:
+                    data = fi.read(buffer_size)
+        # File is closed after data is sent
         print("EOF")
-        conn.send(Encrypt("-", key))
+        conn.send(b"-----")
+        print('Sent EOF')
+
+
 
 
     except FileNotFoundError:
@@ -197,23 +213,55 @@ def Upload(conn, message, key):
 
     except Exception as e:
         print(e)
+        tb = e.__traceback__
+        lines = []
+        while tb is not None:
+            lines.append(tb.tb_lineno)
+            tb = tb.tb_next
+        print(lines)
         return
 
 def Download(conn, message, key, buffer_size):
     files_name = message.split(' ', 1)[1]
+    secondary_buffer = conn.recv(1024)
+    print(secondary_buffer)
+    secondary_buffer = Decrypt(secondary_buffer, key)
+    secondary_buffer_size = CalculateSecondaryBuffer(int(secondary_buffer), buffer_size)
     try:
         # Reading file and sending data to server
         with open(files_name, "xb") as fil:
             print("Starting Download")
+            buffer = b''
+            write_buffer = bytearray()
+
             while True:
-                file_data = Decrypt(conn.recv(buffer_size), key, False)
-                if file_data == b'-':  # Stop if no more data
+                encrypted_bytes = conn.recv(buffer_size)
+
+                print(f'{encrypted_bytes[-4:]} {len(buffer)} {len(write_buffer)}')
+                if encrypted_bytes[-4:] in [b'----', b'++++'] and len(buffer) > 0:  # Stop if no more data
+                    print("Last byte")
+                    if encrypted_bytes[-4:] == b'++++':
+                        raise EOFError
+
                     conn.send(Encrypt("ACK", key))
+                    buffer += encrypted_bytes[-4:]
+                    if(len(buffer)):
+                        write_buffer += Decrypt(buffer, key, False)
+
+                    fil.write(write_buffer)
                     return
-                elif file_data == b'+':
-                    raise EOFError
-                fil.write(file_data)
-                conn.send(Encrypt("ACK", key))
+                else:
+                    buffer += encrypted_bytes
+                    while len(buffer) >= buffer_size:
+                        file_data = buffer[:buffer_size]
+                        buffer = buffer[buffer_size:]
+
+                        write_buffer += Decrypt(file_data, key, False)
+                        if(len(write_buffer) >= secondary_buffer_size):
+                            fil.write(write_buffer)
+                            write_buffer.clear()
+
+                    conn.send(Encrypt("ACK", key))
 
     except FileExistsError:
         print('This File Already Exists!')
@@ -225,6 +273,7 @@ def Download(conn, message, key, buffer_size):
 
     except Exception as e:
         print(e)
+        os.remove(files_name)
         return
 
 
@@ -244,11 +293,21 @@ def OnConnect(conn):
 
 def CalculateBuffer(file_size):
     Min = 1024
-    Max = 1024 * 1023
+    Max = 1024 * 1024
     if(file_size == 0):
         return 1024
     return max(Min, min(file_size // 10, Max))
 
+def CalculateSecondaryBuffer(file_size, main_buffer_size):
+    Min = main_buffer_size
+    Max = 64 * 1024 * 1024
+
+    if file_size == 0:
+        return Min
+
+    # Calculate 1/4 of the file size but make sure it's within the min and max limits
+    secondary_buffer_size = file_size // 4
+    return max(Min, min(secondary_buffer_size, Max))
 
 if __name__ == '__main__':
     client_program()

@@ -98,6 +98,7 @@ def Thread_Handler(conn):
         conn.close()
         return
     else:
+        conn.settimeout(None)
         pass
 
     try:
