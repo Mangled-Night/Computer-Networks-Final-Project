@@ -135,6 +135,7 @@ def Encryption(addr, conn):
     conn.send("Hello".encode())
     buffer_size = conn.recv(1024)
     conn.send("Hello".encode())
+
     while True:
         data = conn.recv(int(buffer_size))
         if(data == b''):  # Signifies end of encryption sends, terminates the loop
@@ -155,7 +156,7 @@ def Encryption(addr, conn):
         encrypted_data = encryptor.update(data) + encryptor.finalize()
 
         # Send the IV and encrypted data together
-        conn.send(iv + encrypted_data)
+        conn.sendall(iv + encrypted_data)
 
 
 
@@ -178,7 +179,7 @@ def Decryption(addr, conn):
         decryptor = cipher.decryptor()  # Makes an AES decryptor
 
         decrypted_data = decryptor.update(data[16:]) + decryptor.finalize()  # fully decrypts data
-        conn.send(decrypted_data)  # Sends decrypted data to the server
+        conn.sendall(decrypted_data)  # Sends decrypted data to the server
 
 
 def SetAESKey(addr, conn):

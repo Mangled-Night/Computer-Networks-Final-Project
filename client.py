@@ -88,6 +88,7 @@ def client_program():
                     if(plaintext.startswith("Download")):
                         _, buffer_size = plaintext.split('-')
                         buffer_size = int(buffer_size) + 16
+                        client_socket.send(b'ACK')
                         Download(client_socket, message, key, buffer_size)
                         message = ""
                         continue
@@ -167,7 +168,6 @@ def Upload(conn, message, key):
 
     try:
         buffer_size = CalculateBuffer(os.path.getsize(file_name))
-        print(buffer_size)
         conn.send(Encrypt(str(buffer_size), key))
         conn.recv(1024)
         conn.send(Encrypt(str(os.path.getsize(file_name)), key))
@@ -179,12 +179,9 @@ def Upload(conn, message, key):
             while data:
                 start = time.time()
                 conn.sendall(Encrypt(data, key))
-                print(f"Sent {len(data)} bytes")
 
                 if (len(data) >= buffer_size):
                     Ack = conn.recv(1024)
-                    print(Ack)
-                    print(f"t-{time.time() - start}")
                     if(len(Ack) > 7):
                         Decrypt(Ack, key)
                     if (Ack.decode().startswith("ACK")):
@@ -199,9 +196,7 @@ def Upload(conn, message, key):
                 else:
                     data = fi.read(buffer_size)
         # File is closed after data is sent
-        print("EOF")
         conn.send(b"-----")
-        print('Sent EOF')
 
 
 
@@ -224,9 +219,9 @@ def Upload(conn, message, key):
 def Download(conn, message, key, buffer_size):
     files_name = message.split(' ', 1)[1]
     secondary_buffer = conn.recv(1024)
-    print(secondary_buffer)
     secondary_buffer = Decrypt(secondary_buffer, key)
     secondary_buffer_size = CalculateSecondaryBuffer(int(secondary_buffer), buffer_size)
+    conn.send(b'ACK')
     try:
         # Reading file and sending data to server
         with open(files_name, "xb") as fil:
@@ -237,14 +232,13 @@ def Download(conn, message, key, buffer_size):
             while True:
                 encrypted_bytes = conn.recv(buffer_size)
 
-                print(f'{encrypted_bytes[-4:]} {len(buffer)} {len(write_buffer)}')
-                if encrypted_bytes[-4:] in [b'----', b'++++'] and len(buffer) > 0:  # Stop if no more data
-                    print("Last byte")
-                    if encrypted_bytes[-4:] == b'++++':
+                if encrypted_bytes[-4:] in [b'----', b'++++', b''] and len(buffer) > 0:  # Stop if no more data
+                    if encrypted_bytes[-4:] in [b'++++', b'']:
                         raise EOFError
 
                     conn.send(Encrypt("ACK", key))
-                    buffer += encrypted_bytes[-4:]
+                    buffer += encrypted_bytes[:-4]
+
                     if(len(buffer)):
                         write_buffer += Decrypt(buffer, key, False)
 
@@ -261,7 +255,7 @@ def Download(conn, message, key, buffer_size):
                             fil.write(write_buffer)
                             write_buffer.clear()
 
-                    conn.send(Encrypt("ACK", key))
+                        conn.send(Encrypt("ACK", key))
 
     except FileExistsError:
         print('This File Already Exists!')

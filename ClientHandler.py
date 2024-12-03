@@ -481,9 +481,7 @@ class ClientHandle:
                 while True:
                     encryptedBytes = self._conn.recv(buffer_size)
 
-                    print(f'{encryptedBytes[-4:]} {len(buffer)} {len(write_buffer)}')
                     if encryptedBytes[-4:] in [b'----', b'++++'] and len(buffer) > 0:
-                        print("Writing secondary Buffer")
                         buffer += encryptedBytes[:4]
 
                         Decryption_socket.send(buffer)
@@ -511,13 +509,11 @@ class ClientHandle:
 
                             self._conn.send(f'ACK-{i}'.encode())
                             ack = self._conn.recv(3)
-                            print(ack)
                             i += 1
 
 
 
                     if encryptedBytes[-4:] == b'----':  # Stop if no more data
-                        print("Finished")
                         # Record stats
                         elapsed_time = time.time() - start
                         file_size_MB =  os.path.getsize(file)/ (1024 * 1024)
@@ -598,10 +594,9 @@ class ClientHandle:
         Encryption_socket.connect(self._RSAServer)
         Decryption_socket.connect(self._RSAServer)
 
+        Timeout = 0
         Encryption_socket.settimeout(10)
         Decryption_socket.settimeout(10)
-
-        Timeout = 0
 
         while True:
             try:
@@ -626,33 +621,47 @@ class ClientHandle:
                     return
             else:
                 break
-        self._conn.settimeout(10)
+        #self._conn.settimeout(10)
         noACK = 0
 
         try:
             # Send the buffer size to the client
             self._conn.send(self.__MessageEncrypt(f"Download-{buffer_size}".encode()))
+            self._conn.recv(1024)
             self._conn.send(self.__MessageEncrypt(f'{os.path.getsize(file)}'.encode()))
-            print("File size sent")
+            self._conn.recv(1024)
+            i = 0
+
             with (open(file, 'rb') as f):  # Read the file in binary mode, no need to encode it
                 start = time.time()
                 file_data = f.read(buffer_size)
                 while file_data:    # Automatically stops at EOF
-                    Encryption_socket.send(file_data)
-                    encrypted_bytes = Encryption_socket.recv(buffer_size + 1024)
-                    self._conn.sendall(encrypted_bytes)
+                    total_bytes = b''
+                    sent = Encryption_socket.send(file_data)
+                    while (len(total_bytes) < len(file_data)):
+                        encrypted_bytes = Encryption_socket.recv(buffer_size + 1024)
+                        self._conn.send(encrypted_bytes)
+                        total_bytes += encrypted_bytes
+                        if encrypted_bytes == b'':
+                            raise EOFError
 
-                    Decryption_socket.send(self._conn.recv(1024))
-                    Ack = Decryption_socket.recv(1024).decode()
+                    if(len(file_data) >= buffer_size):
+                        Decryption_socket.send(self._conn.recv(1024))
+                        Ack = Decryption_socket.recv(1024)
+                        i += 1
 
-                    if(Ack != "ACK"):
-                        noACK += 1
-                        if(noACK == 3):
-                            self._log.warning("De-synchronized Connection With Host")
-                            self._conn.send(self.__MessageEncrypt('+'.encode()))
-                            return
-                    else:
-                        file_data = f.read(buffer_size)
+                        if(Ack.decode() != "ACK"):
+                            noACK += 1
+                            if(noACK == 3):
+                                self._log.warning("De-synchronized Connection With Host")
+                                self._conn.send(b'++++')
+                                return
+                    file_data = f.read(buffer_size)
+
+                    # Break the loop if no more data is left
+                    if not file_data:
+                        self._conn.send(b'----')  # Signal end of transfer
+                        break
 
                 # Record the statistics
                 elapsed_time = time.time() - start
@@ -666,7 +675,7 @@ class ClientHandle:
                 Decryption_socket.close()
 
                 # Tells client download is complete
-                self._conn.send(b'----')
+                #self._conn.send(b'----')
                 self.__ReciveMessage()
                 self.__SendMessage("File Download Complete!")
                 self._log.info(f'{self._user} has Downloaded a File')
